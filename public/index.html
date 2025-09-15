@@ -4,25 +4,190 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Загрузка файлов</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background-color: #d1ecf1;
+            border: 1px solid #b6d4ea;
+            color: #0c5460;
+        }
+        pre {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+        }
+    </style>
 </head>
 <body>
     <h1>Загрузка файлов</h1>
+    <div id="status" class="status info">
+        Инициализация...
+    </div>
+    
     <form id="upload-form" enctype="multipart/form-data">
-        <input type="file" name="file" id="file-input" required>
-        <button type="submit">Загрузить</button>
+        <p>
+            <label for="file-input">Выберите файл:</label><br>
+            <input type="file" name="file" id="file-input" required>
+        </p>
+        <p>
+            <button type="submit" id="submit-btn">Загрузить</button>
+        </p>
     </form>
+    
     <div id="response"></div>
+    
     <script>
+        // Функция для получения CSRF токена
+        function getCSRFToken() {
+            return window.csrfToken || null;
+        }
+        
+        // Функция для проверки готовности системы
+        function checkSystemReady() {
+            console.log('Checking system readiness...');
+            
+            const securityToken = getCSRFToken();
+            const statusDiv = document.getElementById('status');
+            const submitBtn = document.getElementById('submit-btn');
+            
+            console.log('Security token:', securityToken);
+            
+            if (securityToken) {
+                statusDiv.textContent = 'Система готова к загрузке файлов';
+                statusDiv.className = 'status success';
+                submitBtn.disabled = false;
+                return securityToken;
+            } else {
+                statusDiv.textContent = 'Подготовка системы... Обновите страницу, если загрузка не завершается.';
+                statusDiv.className = 'status error';
+                submitBtn.disabled = true;
+                return null;
+            }
+        }
+        
+        // Проверяем готовность системы при загрузке страницы
+        window.addEventListener('load', function() {
+            setTimeout(checkSystemReady, 100); // Небольшая задержка для инициализации
+        });
+        
+        // Обработчик формы загрузки файла
         document.getElementById("upload-form").addEventListener("submit", async (event) => {
             event.preventDefault();
+            
+            const securityToken = getCSRFToken();
+            if (!securityToken) {
+                alert('Система не готова. Обновите страницу.');
+                return;
+            }
+            
+            const fileInput = document.getElementById("file-input");
+            if (!fileInput.files[0]) {
+                alert('Пожалуйста, выберите файл.');
+                return;
+            }
+            
             const formData = new FormData();
-            formData.append("file", document.getElementById("file-input").files[0]);
-            const response = await fetch("/files/upload", {
-                method: "POST",
-                body: formData
-            });
-            const result = await response.json();
-            document.getElementById("response").innerText = JSON.stringify(result, null, 2);
+            formData.append("file", fileInput.files[0]);
+            
+            const responseDiv = document.getElementById("response");
+            const submitBtn = document.getElementById('submit-btn');
+            
+            try {
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Загружается...';
+                responseDiv.innerHTML = '<div class="status info">Загружается файл... (токен заблокирован)</div>';
+                
+                console.log('Sending request with CSRF token:', securityToken.substring(0, 8) + '...');
+                
+                const response = await fetch("/files/upload", {
+                    method: "POST",
+                    body: formData,
+                    headers: {
+                        'X-CSRF-Token': securityToken
+                    },
+                    credentials: 'same-origin'
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    responseDiv.innerHTML = `
+                        <div class="status success">
+                            <strong>Файл успешно загружен!</strong>
+                        </div>
+                        <pre>${JSON.stringify(result, null, 2)}</pre>
+                    `;
+                    // После успешной загрузки блокируем кнопку и требуем обновления страницы
+                    setTimeout(() => {
+                        statusDiv.textContent = 'Загрузка завершена. Обновите страницу для новой загрузки.';
+                        statusDiv.className = 'status info';
+                        submitBtn.disabled = true;
+                        submitBtn.textContent = 'Обновите страницу';
+                    }, 2000);
+                } else {
+                    let errorMessage = 'Неизвестная ошибка';
+                    
+                    // Делаем ошибки более понятными для пользователя
+                    if (result.detail) {
+                        if (result.detail.includes('already being processed')) {
+                            errorMessage = '⚠️ Файл уже загружается! Подождите завершения текущей загрузки.';
+                        } else if (result.detail.includes('CSRF') || result.detail.includes('Bad headers')) {
+                            errorMessage = 'Ошибка безопасности. Обновите страницу и попробуйте снова.';
+                        } else {
+                            errorMessage = result.detail;
+                        }
+                    }
+                    
+                    responseDiv.innerHTML = `
+                        <div class="status error">
+                            <strong>Ошибка загрузки:</strong> ${errorMessage}
+                        </div>
+                    `;
+                    
+                    // При ошибке блокировки токена предлагаем обновить страницу
+                    if (result.detail && result.detail.includes('already being processed')) {
+                        setTimeout(() => {
+                            if (confirm('Обновить страницу для получения нового токена?')) {
+                                window.location.reload();
+                            }
+                        }, 3000);
+                    }
+                }
+            } catch (error) {
+                console.error('Network error:', error);
+                responseDiv.innerHTML = `
+                    <div class="status error">
+                        <strong>Ошибка сети:</strong> Проверьте соединение с интернетом
+                    </div>
+                `;
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Загрузить';
+                
+                // Проверяем готовность системы снова после запроса
+                setTimeout(checkSystemReady, 100);
+            }
         });
     </script>
 </body>
