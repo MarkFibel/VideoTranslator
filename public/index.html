@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Загрузка файлов</title>
+</head>
+<body>
+    <h1>Загрузка файлов</h1>
+    <form id="upload-form" enctype="multipart/form-data">
+        <input type="file" name="file" id="file-input" required>
+        <button type="submit">Загрузить</button>
+    </form>
+    <div id="response"></div>
+    <script>
+        document.getElementById("upload-form").addEventListener("submit", async (event) => {
+            event.preventDefault();
+            const formData = new FormData();
+            formData.append("file", document.getElementById("file-input").files[0]);
+            const response = await fetch("/files/upload", {
+                method: "POST",
+                body: formData
+            });
+            const result = await response.json();
+            document.getElementById("response").innerText = JSON.stringify(result, null, 2);
+        });
+    </script>
+</body>
+</html>
