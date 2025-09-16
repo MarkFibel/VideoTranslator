@@ -52,8 +52,8 @@ def get_application() -> FastAPI:
     logger.info("Static files mounted at /static")
 
     # Добавляем security middleware (должен быть первым)
-    application.add_middleware(SecurityMiddleware, max_request_size=1024*1024)
-    logger.info("Security middleware configured")
+    application.add_middleware(SecurityMiddleware, max_request_size=settings.MAX_FILE_SIZE)
+    logger.info(f"Security middleware configured with max file size: {settings.MAX_FILE_SIZE / (1024*1024):.1f}MB")
     
     # Добавляем logging middleware
     if settings.DEBUG:

@@ -267,6 +267,199 @@
             }
         }
 
+        // SSE connection management
+        let eventSource = null;
+        let clientId = null;
+        let currentTaskId = null;
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 5;
+        const reconnectDelay = 3000; // 3 seconds
+
+        // Initialize SSE connection
+        function initializeSSE() {
+            if (eventSource) {
+                eventSource.close();
+            }
+
+            // Generate client ID if not exists
+            if (!clientId) {
+                clientId = 'client_' + Math.random().toString(36).substr(2, 9);
+            }
+
+            const sseUrl = `/test/events/stream?client_id=${clientId}`;
+            eventSource = new EventSource(sseUrl);
+
+            eventSource.onopen = function(event) {
+                console.log('SSE connection established');
+                reconnectAttempts = 0; // Reset reconnect attempts on successful connection
+            };
+
+            eventSource.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    handleSSEMessage(data);
+                } catch (error) {
+                    console.error('Error parsing SSE message:', error);
+                }
+            };
+
+            eventSource.onerror = function(event) {
+                console.error('SSE connection error:', event);
+                
+                // Only attempt reconnection if we haven't exceeded max attempts
+                if (reconnectAttempts < maxReconnectAttempts) {
+                    reconnectAttempts++;
+                    console.log(`Attempting to reconnect (${reconnectAttempts}/${maxReconnectAttempts})...`);
+                    
+                    setTimeout(() => {
+                        if (eventSource && eventSource.readyState === EventSource.CLOSED) {
+                            initializeSSE();
+                        }
+                    }, reconnectDelay * reconnectAttempts); // Exponential backoff
+                } else {
+                    console.error('Max reconnection attempts reached. SSE connection failed.');
+                }
+            };
+        }
+
+        // Handle SSE messages
+        function handleSSEMessage(data) {
+            console.log('SSE Message received:', data);
+            
+            switch (data.event) {
+                case 'connected':
+                    console.log('Connected to SSE with client ID:', data.client_id);
+                    break;
+                
+                case 'task_started':
+                    console.log('Task started:', data.data.task_id);
+                    currentTaskId = data.data.task_id;
+                    updateProgress(0, 'Задача запущена...');
+                    break;
+                
+                case 'task_progress':
+                    if (data.data.task_id === currentTaskId) {
+                        updateProgress(data.data.progress, data.data.message);
+                    }
+                    break;
+                
+                case 'task_completed':
+                    if (data.data.task_id === currentTaskId) {
+                        handleTaskCompletion(data.data);
+                    }
+                    break;
+                
+                case 'task_failed':
+                    if (data.data.task_id === currentTaskId) {
+                        handleTaskFailure(data.data);
+                    }
+                    break;
+                
+                case 'heartbeat':
+                    // Keep connection alive - no action needed, just log
+                    console.debug('SSE heartbeat received');
+                    break;
+                
+                default:
+                    console.log('Unknown SSE event:', data.event);
+            }
+        }
+
+        // Update progress display
+        function updateProgress(progress, message) {
+            progressFill.style.width = progress + '%';
+            
+            if (message) {
+                progressText.textContent = message;
+            } else {
+                const currentLang = document.documentElement.lang;
+                if (progress < 30) {
+                    progressText.textContent = translations[currentLang]['queued'];
+                } else if (progress < 70) {
+                    progressText.textContent = translations[currentLang]['processing'];
+                } else {
+                    progressText.textContent = translations[currentLang]['finalizing'];
+                }
+            }
+        }
+
+        // Handle task completion
+        function handleTaskCompletion(taskData) {
+            console.log('Task completed:', taskData);
+            updateProgress(100, 'Обработка завершена');
+            
+            setTimeout(() => {
+                processingSection.classList.add('hidden');
+                downloadSection.classList.remove('hidden');
+            }, 1000);
+        }
+
+        // Handle task failure
+        function handleTaskFailure(taskData) {
+            console.error('Task failed:', taskData);
+            updateProgress(0, 'Ошибка обработки: ' + taskData.error);
+            
+            // Show error and reset after 3 seconds
+            setTimeout(() => {
+                processingSection.classList.add('hidden');
+                uploadSection.classList.remove('hidden');
+                progressFill.style.width = '0%';
+                progressText.textContent = '';
+            }, 3000);
+        }
+
+        // Get CSRF token
+        async function getCSRFToken() {
+            // Используем встроенный CSRF токен из window.csrfToken
+            if (window.csrfToken) {
+                return window.csrfToken;
+            } else {
+                console.error('CSRF token not found in window object');
+                return null;
+            }
+        }
+
+        // Upload file with SSE support
+        async function uploadFileWithSSE(file) {
+            try {
+                const csrfToken = await getCSRFToken();
+                if (!csrfToken) {
+                    throw new Error('Failed to get CSRF token');
+                }
+
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('client_id', clientId);
+
+                const response = await fetch('/test/files/upload', {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'X-CSRF-Token': csrfToken
+                    },
+                    credentials: 'include'
+                });
+
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    console.log('File upload started:', result);
+                    currentTaskId = result.data.task_id;
+                    updateProgress(5, 'Файл загружен, начинается обработка...');
+                } else {
+                    throw new Error(result.message || 'Upload failed');
+                }
+                
+            } catch (error) {
+                console.error('Upload error:', error);
+                alert('Ошибка загрузки файла: ' + error.message);
+                
+                // Reset UI
+                processingSection.classList.add('hidden');
+                uploadSection.classList.remove('hidden');
+            }
+        }
+
         // Обработчики для переключения языка
         langRuBtn.addEventListener('click', () => setLanguage('ru'));
         langEnBtn.addEventListener('click', () => setLanguage('en'));
@@ -276,38 +469,20 @@
             fileInput.click();
         });
 
-        fileInput.addEventListener('change', (e) => {
+        fileInput.addEventListener('change', async (e) => {
             if (e.target.files.length > 0) {
+                const file = e.target.files[0];
+                
                 // Показываем секцию обработки
                 uploadSection.classList.add('hidden');
                 processingSection.classList.remove('hidden');
                 
-                // Симулируем процесс обработки
-                let progress = 0;
-                const interval = setInterval(() => {
-                    progress += Math.random() * 10;
-                    if (progress >= 100) {
-                        progress = 100;
-                        clearInterval(interval);
-                        
-                        // Показываем секцию загрузки после обработки
-                        setTimeout(() => {
-                            processingSection.classList.add('hidden');
-                            downloadSection.classList.remove('hidden');
-                        }, 500);
-                    }
-                    
-                    progressFill.style.width = progress + '%';
-                    const currentLang = document.documentElement.lang;
-                    
-                    if (progress < 30) {
-                        progressText.textContent = translations[currentLang]['queued'];
-                    } else if (progress < 70) {
-                        progressText.textContent = translations[currentLang]['processing'];
-                    } else {
-                        progressText.textContent = translations[currentLang]['finalizing'];
-                    }
-                }, 800);
+                // Сбрасываем прогресс
+                progressFill.style.width = '0%';
+                progressText.textContent = 'Подготовка к загрузке...';
+                
+                // Загружаем файл с SSE поддержкой
+                await uploadFileWithSSE(file);
             }
         });
 
@@ -315,6 +490,18 @@
             const currentLang = document.documentElement.lang;
             const message = currentLang === 'ru' ? 'Видео скачано!' : 'Video downloaded!';
             alert(message);
+        });
+
+        // Initialize SSE connection on page load
+        window.addEventListener('load', () => {
+            initializeSSE();
+        });
+
+        // Clean up SSE connection on page unload
+        window.addEventListener('beforeunload', () => {
+            if (eventSource) {
+                eventSource.close();
+            }
         });
 
         // Инициализируем язык по умолчанию
