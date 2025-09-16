@@ -9,6 +9,7 @@ from fastapi_csrf_protect.exceptions import CsrfProtectError
 from pydantic_settings import BaseSettings
 from src.config.project_config import settings
 from src.config.logging_config import setup_logging
+from src.middleware import SecurityMiddleware, RequestLoggingMiddleware
 from .routes import get_apps_router
 
 # Инициализация системы логирования
@@ -49,6 +50,15 @@ def get_application() -> FastAPI:
     # Настройка обслуживания статических файлов
     application.mount("/static", StaticFiles(directory="public"), name="static")
     logger.info("Static files mounted at /static")
+
+    # Добавляем security middleware (должен быть первым)
+    application.add_middleware(SecurityMiddleware, max_request_size=1024*1024)
+    logger.info("Security middleware configured")
+    
+    # Добавляем logging middleware
+    if settings.DEBUG:
+        application.add_middleware(RequestLoggingMiddleware)
+        logger.info("Request logging middleware configured")
 
     application.add_middleware(
         CORSMiddleware,
