@@ -3,3 +3,4 @@ venv/
 .env
 var/
 __pycache__/
+local
