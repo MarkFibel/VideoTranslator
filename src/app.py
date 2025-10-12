@@ -52,23 +52,23 @@ def get_application() -> FastAPI:
     logger.info("Static files mounted at /static")
 
     # Добавляем security middleware (должен быть первым)
-    application.add_middleware(SecurityMiddleware, max_request_size=settings.MAX_FILE_SIZE)
-    logger.info(f"Security middleware configured with max file size: {settings.MAX_FILE_SIZE / (1024*1024):.1f}MB")
+    # application.add_middleware(SecurityMiddleware, max_request_size=settings.MAX_FILE_SIZE)
+    # logger.info(f"Security middleware configured with max file size: {settings.MAX_FILE_SIZE / (1024*1024):.1f}MB")
     
-    # Добавляем logging middleware
-    if settings.DEBUG:
-        application.add_middleware(RequestLoggingMiddleware)
-        logger.info("Request logging middleware configured")
+    # # Добавляем logging middleware
+    # if settings.DEBUG:
+    #     application.add_middleware(RequestLoggingMiddleware)
+    #     logger.info("Request logging middleware configured")
 
-    application.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.CORS_ALLOWED_ORIGINS.split(" "),
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-    logger.info("CORS middleware configured")
-    logger.info("FastAPI application initialized successfully")
+    # application.add_middleware(
+    #     CORSMiddleware,
+    #     allow_origins=settings.CORS_ALLOWED_ORIGINS.split(" "),
+    #     allow_credentials=True,
+    #     allow_methods=["*"],
+    #     allow_headers=["*"],
+    # )
+    # logger.info("CORS middleware configured")
+    # logger.info("FastAPI application initialized successfully")
     return application
 
 
