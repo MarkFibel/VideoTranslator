@@ -14,11 +14,7 @@ class Settings(BaseSettings):
     # Настройки логирования
     LOG_LEVEL: str = "INFO"
     LOG_DIR: str = "var/log"
-    
-    # Настройки CSRF защиты
-    CSRF_SECRET_KEY: str = "your-super-secret-csrf-key-change-in-production"
-    CSRF_TOKEN_EXPIRES: int = 1800  # 30 минут в секундах
-    
+
     # Настройки загрузки файлов
     MAX_FILE_SIZE: int = 10 * 1024 * 1024  # 10MB в байтах
     
