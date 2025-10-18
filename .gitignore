@@ -4,3 +4,4 @@ venv/
 var/
 __pycache__/
 local
+docs/dev
