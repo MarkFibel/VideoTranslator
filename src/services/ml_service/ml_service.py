@@ -23,6 +23,8 @@ class MLService(BaseService):
         # Получаем параметр message из входных данных
         message = data.get("message", "No message provided")
         
+        # TODO: Здесь выызываем пайплайн обработки видео
+        
         # Формируем ответ
         result = {
             "status": "success",
