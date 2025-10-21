@@ -37,6 +37,20 @@ def tr_frames(frames_dir, res_dir):
             
     return {'status': True}
 
+def rename_file(directory, old_name, new_name):
+    old_path = os.path.join(directory, old_name)
+    new_path = os.path.join(directory, new_name)
+    
+    try:
+        os.rename(old_path, new_path)
+        return {'status': True}
+    except FileNotFoundError:
+        return {'status': False, 'error': f"Файл '{old_name}' не найден в директории '{directory}'."}
+    except FileExistsError:
+        return {'status': False, 'error': f"Файл с именем '{new_name}' уже существует в директории '{directory}'."}
+    except Exception as e:
+        return {'status': False, 'error': f"Произошла ошибка: {e}"}
+
 
 def split_video_to_frames(path: str, temp_dir: str):
     # Создаем директорию, если она не существует
@@ -47,7 +61,8 @@ def split_video_to_frames(path: str, temp_dir: str):
     
     # Проверка успешности открытия видео
     if not cap.isOpened():
-        raise IOError(f"Не удалось открыть видео: {path}")
+        # raise IOError(f"Не удалось открыть видео: {path}")
+        return {'status': False, 'error': IOError(f"Не удалось открыть видео: {path}")}
     
     frame_count = 0
     
@@ -62,7 +77,7 @@ def split_video_to_frames(path: str, temp_dir: str):
         frame_count += 1
     
     cap.release()
-    return {'procced_frames': frame_count}    
+    return {'status': True, 'procced_frames': frame_count}    
 
 
 def extract_audio_from_video(video_path, output_audio_path):
@@ -72,6 +87,7 @@ def extract_audio_from_video(video_path, output_audio_path):
     :param video_path: путь к исходному видеофайлу
     :param output_audio_path: путь для сохранения извлеченного аудио
     """
+    print(f"extract_audio_from_video: {video_path}")
     try:
         with VideoFileClip(video_path) as video:
             audio = video.audio
@@ -161,8 +177,9 @@ def images_to_video_with_audio_auto_fps(
 
     # Обработка аудио
     if audio_path and os.path.exists(audio_path):
-        wav_path = f"{temp_dir}/final_audio.wav"
-        mp3_path = f'{temp_dir}/final_audio.mp3'
+        file_name = os.path.basename(audio_path.replace('.mp3', '').replace('.wav', ''))
+        wav_path = f"{temp_dir}/temp_{file_name}_audio.wav"
+        mp3_path = f'{temp_dir}/temp_{file_name}_audio.mp3'
         # Пример использования:
         change_audio_speed(audio_path, wav_path, desired_duration_sec=target_duration)
         audio = AudioSegment.from_wav(wav_path)
@@ -204,9 +221,9 @@ def change_audio_speed(input_path: str, output_path: str, desired_duration_sec: 
 
     # --- Рассчитываем коэффициент изменения времени ---
     ratio = desired_duration_sec / original_duration
-
+    file_name = os.path.basename(input_path.replace('.mp3', '').replace('.wav', ''))
     # --- Применяем time-stretch ---
-    temp_output = f"{temp_dir}/temp_stretched.wav"
+    temp_output = f"{temp_dir}/temp_{file_name}_stretched.wav"
     stretch_audio(input_path, temp_output, ratio=ratio)
 
     # --- Обрезаем до нужной длины ---
