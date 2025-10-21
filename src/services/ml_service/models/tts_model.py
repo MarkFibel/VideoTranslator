@@ -19,7 +19,7 @@ class BaseSpeechGenerationModel:
 
 
 class VitsAudioGenerationModel(BaseSpeechGenerationModel):
-    def __init__(self, model_name="facebook/mms-tts-rus", cache_dir=settings.MODEL_CAHCE_DIRx):
+    def __init__(self, model_name="facebook/mms-tts-rus", cache_dir=settings.MODEL_CAHCE_DIR):
         self.model_name = model_name
         self.model = VitsModel.from_pretrained(model_name, cache_dir=cache_dir)
         self.tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
@@ -41,11 +41,6 @@ class VitsAudioGenerationModel(BaseSpeechGenerationModel):
             # Write WAV file
             wvfile.write(wav_path, rate=self.model.config.sampling_rate, data=waveform_int16)
             logger.info(f"WAV file saved to: {wav_path}")
-            
-            # Convert WAV to MP3
-            audio = AudioSegment.from_wav(wav_path)
-            audio.export(mp3_path, format="mp3")
-            logger.info(f"MP3 file saved to: {mp3_path}")
             
             return {'status': True, 'source_text': text, 'wav_path': wav_path, 'mp3_path': mp3_path}
         except Exception as e:
