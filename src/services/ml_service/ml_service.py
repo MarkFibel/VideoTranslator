@@ -34,9 +34,10 @@ class MLService(BaseService):
         message = data.get("message", "No message provided")
         
         # TODO: Здесь выызываем пайплайн обработки видео
-        path = data.get("path", None)
+        path = data.get("path", '')
+        #TODO результат писать в тот же файл. Оригинал делаем с припиской temp
         result_dir = data.get("res_dir", 'var/results')
-        if path is None:
+        if path == '':
             logging.info(f"Путь не распознан")
         # path = 'path/to/video'
         # result_dir = 'directory/for/done/video'
@@ -103,7 +104,7 @@ class MLService(BaseService):
         
         r = images_to_video_with_audio_auto_fps('/'.join([self.temp_dir, 'translated_frames']),
                                                 '/'.join([self.temp_dir, 'translated.wav']),
-                                                '/'.join([result_dir, 'final_video.mp4']),
+                                                '/'.join([result_dir, 'final_video.mp4']), #TODO записывать в оригинал
                                                 path)
         if r['status']:
             logging.info(f"✅ Сборка видео завершена")

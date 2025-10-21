@@ -109,7 +109,7 @@ def video_to_frames(video_path: str, output_folder: str) -> None:
     logging.info(f"Извлечено {frame_count} кадров → {output_folder}")
     
 
-def extract_audio_from_video(video_path: str, output_audio_path: str) -> None:
+def extract_audio_from_video(video_path: str, output_audio_path: str) -> dict:
     clip = VideoFileClip(video_path)
     if clip.audio is None:
         return {'status': False, 'error': ValueError("В видео нет аудиодорожки")}
