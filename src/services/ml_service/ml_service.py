@@ -112,5 +112,7 @@ class MLService(BaseService):
             logging.info(f"❌ произошла ошибка в сборке видео: {r['error']}")
             return {'status': False, 'error': r['error']}
         
+        #TODO Удалять временные файлы
+        
         return {'status': True}
         
