@@ -24,8 +24,8 @@ class RPCConsumer:
     Получает сообщения из очереди, передает их в JSONRPCDispatcher
     для обработки и отправляет ответы обратно клиенту.
     """
-    
-    def __init__(self, connection_manager: ConnectionManager, dispatcher: JSONRPCDispatcher):
+
+    def __init__(self, connection_manager: ConnectionManager = ConnectionManager(rabbitmq_settings.url), dispatcher: JSONRPCDispatcher = JSONRPCDispatcher()):
         """
         Инициализация консьюмера.
         

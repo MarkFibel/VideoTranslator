@@ -27,7 +27,7 @@ class RPCProducer:
     - correlation_id для связывания запросов и ответов
     """
     
-    def __init__(self, connection_manager: ConnectionManager):
+    def __init__(self, connection_manager: ConnectionManager = ConnectionManager(rabbitmq_settings.url)):
         """
         Инициализация продюсера.
         

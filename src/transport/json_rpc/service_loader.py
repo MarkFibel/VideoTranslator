@@ -33,10 +33,14 @@ class ServiceLoader:
         if services_dir is None:
             # Определяем путь к директории services относительно текущего файла
             current_file = Path(__file__)
-            project_root = current_file.parent.parent.parent
-            self.services_dir = project_root / "services"
+            # current_file.parent = json_rpc/, .parent.parent = transport/, .parent.parent.parent = src/
+            src_root = current_file.parent.parent.parent
+            self.project_root = src_root.parent  # Корень проекта (на уровень выше src/)
+            self.services_dir = src_root / "services"
         else:
             self.services_dir = Path(services_dir)
+            # Пытаемся вычислить project_root от services_dir
+            self.project_root = self.services_dir.parent.parent
         
         logger.info(f"ServiceLoader initialized with directory: {self.services_dir}")
     
@@ -73,8 +77,8 @@ class ServiceLoader:
         
         try:
             # Преобразуем путь к файлу в имя модуля
-            # Например: c:/project/src/services/test_service.py -> src.services.test_service
-            relative_path = file_path.relative_to(file_path.parents[2])  # Относительно корня проекта
+            # Например: C:/PP/src/services/test_service.py -> src.services.test_service
+            relative_path = file_path.relative_to(self.project_root)  # Относительно корня проекта
             module_name = str(relative_path.with_suffix('')).replace(os.sep, '.')
             
             logger.debug(f"Attempting to import module: {module_name}")
