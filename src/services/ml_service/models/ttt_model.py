@@ -2,6 +2,7 @@
 
 import logging
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+from src.config.services.ml_config import settings
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -14,11 +15,11 @@ class BaseTranslationModel:
         return {'status': True, 'error': 'Error description', 'text': 'some text', 'source_text': text}
 
 class OpusTextTranslationModel(BaseTranslationModel):
-    def __init__(self):
+    def __init__(self, cache_dir=settings.MODEL_CAHCE_DIR):
         super().__init__()
         try:
-            self.tokenizer = AutoTokenizer.from_pretrained("Helsinki-NLP/opus-mt-en-ru", cache_dir='./model_cache')
-            self.model = AutoModelForSeq2SeqLM.from_pretrained("Helsinki-NLP/opus-mt-en-ru", cache_dir='./model_cache')
+            self.tokenizer = AutoTokenizer.from_pretrained("Helsinki-NLP/opus-mt-en-ru", cache_dir=cache_dir)
+            self.model = AutoModelForSeq2SeqLM.from_pretrained("Helsinki-NLP/opus-mt-en-ru", cache_dir=cache_dir)
             logger.info("Model and tokenizer loaded successfully")
         except Exception as e:
             logger.error(f"Error loading model/tokenizer: {e}")

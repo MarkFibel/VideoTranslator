@@ -5,6 +5,7 @@ import torch
 import numpy as np
 import scipy.io.wavfile as wvfile
 from pydub import AudioSegment
+from src.config.services.ml_config import settings
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -18,10 +19,10 @@ class BaseSpeechGenerationModel:
 
 
 class VitsAudioGenerationModel(BaseSpeechGenerationModel):
-    def __init__(self, model_name="facebook/mms-tts-rus"):
+    def __init__(self, model_name="facebook/mms-tts-rus", cache_dir=settings.MODEL_CAHCE_DIRx):
         self.model_name = model_name
-        self.model = VitsModel.from_pretrained(model_name)
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.model = VitsModel.from_pretrained(model_name, cache_dir=cache_dir)
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
         logger.info(f"Loaded model and tokenizer: {model_name}")
     
     def __call__(self, text: str, output_path: str, temp_dir='var/temp'):
