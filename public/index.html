@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Тест загрузки файла</title>
+</head>
+<body>
+    <h1>Тест загрузки файла</h1>
+    <form action="">
+        <input type="file" id="fileInput" name="fileInput">
+    </form>
+    
+    <script>
+        document.getElementById('fileInput').addEventListener('change', async function(event) {
+            const file = event.target.files[0];
+
+            try {
+                if (file) {
+                    // Создаём FormData для отправки файла
+                    const formData = new FormData();
+                    formData.append('file', file);
+
+                    const response = await fetch('files/upload', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    const result = await response.json();
+
+                    if (response.ok) {
+                        console.log('Файл успешно загружен:', result);
+                        alert(result.detail || 'Файл успешно обработан');
+                    } else {
+                        console.error('Ошибка при загрузке файла:', result);
+                        alert(result.detail || 'Ошибка при загрузке файла');
+                    }
+                }
+            } catch (error) {
+                console.error('Ошибка:', error);
+                alert('Произошла ошибка при загрузке файла');
+            }
+        });
+    </script>
+</body>
+</html>
