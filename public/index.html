@@ -4,16 +4,24 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Тест загрузки файла</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
 </head>
 <body>
-    <h1>Тест загрузки файла</h1>
-    <form action="">
-        <input type="file" id="fileInput" name="fileInput">
+    <form class="container mt-4">
+        <h1 class="text-center mb-4">Тест загрузки файла</h1>
+
+        <div class="mb-4">
+            <input class="form-control" type="file" id="fileInput" name="fileInput">
+        </div>
+        <div class="mb-4">
+            <button class="btn btn-primary" type="button" id="uploadButton">Загрузить файл</button>
+            <button class="btn btn-secondary" type="button" id="downloadButton">Скачать файл</button>
+        </div>
     </form>
     
     <script>
-        document.getElementById('fileInput').addEventListener('change', async function(event) {
-            const file = event.target.files[0];
+        document.getElementById('uploadButton').addEventListener('click', async function(event) {
+            const file = document.getElementById('fileInput').files[0];
 
             try {
                 if (file) {
@@ -40,6 +48,17 @@
                 console.error('Ошибка:', error);
                 alert('Произошла ошибка при загрузке файла');
             }
+        });
+    
+        document.getElementById('downloadButton').addEventListener('click', function() {
+            form = document.querySelector('form');
+            filename = form.fileInput.files[0].name ?? '';
+            if (!filename) {
+                alert('Сначала выберите файл для загрузки, чтобы скачать его.');
+                return;
+            }
+            const fileUrl = 'files/download/' + filename;
+            window.location.href = fileUrl;
         });
     </script>
 </body>
