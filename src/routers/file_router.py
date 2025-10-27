@@ -65,10 +65,12 @@ async def upload_file(
         await producer.connect()
         
         await producer.call(
-            method="ml",
+            method="ml.execute",
             params={
-                "name": file.filename,
-                "path": temp_file_path
+                "data": {
+                    "name": file.filename,
+                    "path": temp_file_path
+                }
             },
             timeout=120.
         )
