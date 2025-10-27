@@ -95,8 +95,10 @@ class MLService(BaseService):
         {
             "method": "ml.execute",
             "params": {
-                "path": "path/to/video",
-                "name": "video_name"
+                "data": {
+                    "path": "path/to/video",
+                    "name": "video_name"
+                }
             }
         }
         """
