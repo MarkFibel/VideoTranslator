@@ -52,12 +52,7 @@
     
         document.getElementById('downloadButton').addEventListener('click', function() {
             form = document.querySelector('form');
-            filename = form.fileInput.files[0].name ?? '';
-            if (!filename) {
-                alert('Сначала выберите файл для загрузки, чтобы скачать его.');
-                return;
-            }
-            const fileUrl = 'files/download/' + filename;
+            const fileUrl = 'files/download';
             window.location.href = fileUrl;
         });
     </script>
