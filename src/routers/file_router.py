@@ -21,6 +21,8 @@ async def upload_file(
 ) -> JSONResponse:
     logger.info(f"File upload started. Filename: {file.filename}, Content-Type: {file.content_type}")
     
+    file_tmp_name = ''
+    
     try:
         # Получаем сессию пользователя
         session = request.state.session.get_session()
@@ -58,22 +60,18 @@ async def upload_file(
             content = await file.read()
             temp_file.write(content)
         
-        ### Временно закоментировал для тестирования роутов
-        # 
-        # producer: RPCProducer = RPCProducer()
-        # await producer.connect()
-        #
-        # TODO: Сверится с контрактом ML сервиса
-        # await producer.call(
-        #     method="ml_service",
-        #     params={
-        #         "filename": file.filename,
-        #         "content_type": file.content_type,
-        #         "path": temp_file_path
-        #     },
-        #     timeout=120.
-        # )
-        ###
+
+        producer: RPCProducer = RPCProducer()
+        await producer.connect()
+        
+        await producer.call(
+            method="ml",
+            params={
+                "name": file.filename,
+                "path": temp_file_path
+            },
+            timeout=120.
+        )
 
         # Сохраняем метаданные файла в сессию пользователя
         session['last_uploaded_file'] = {
@@ -95,9 +93,27 @@ async def upload_file(
         )
     
     except HTTPException as http_exc:
+        session['pending'] = False
+        session['need_download'] = False 
+        
+        logger.error(f"HTTP file upload error: {str(http_exc.detail)}", exc_info=True)
+        
         raise HTTPException(http_exc.status_code, http_exc.detail)
         
     except Exception as e:
+        session['pending'] = False
+        session['need_download'] = False 
+        
+        try:
+            session['last_uploaded_file'] = None
+            
+            if (file_tmp_name and os.path.exists(file_tmp_name)):
+                os.remove(file_tmp_name)
+            
+            logger.info(f"Current temporary file removed: {file_tmp_name}")
+        except Exception as e:
+            pass
+        
         # Любые другие ошибки
         logger.error(f"Unexpected file upload error: {str(e)}", exc_info=True)
         raise HTTPException(HTTP_500_INTERNAL_SERVER_ERROR, f"Internal server error: {str(e)}")
