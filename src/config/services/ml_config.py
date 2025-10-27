@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = True
+        extra = "ignore"
     
     RPC_ENABLED: bool = Field(default=True, exclude=True)
     
