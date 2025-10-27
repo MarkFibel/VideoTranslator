@@ -89,7 +89,16 @@ class MLService(BaseService):
     
     def execute(self, data: dict) -> dict:
         """
-        Основной метод для обработки видео.
+        Метод запуска обработки видео.
+        Для запуска необходимо передать путь к видео и имя файла.
+        Структура вызова через JSON-RPC:
+        {
+            "method": "ml.execute",
+            "params": {
+                "path": "path/to/video",
+                "name": "video_name"
+            }
+        }
         """
 
         logger.info(f"MLService.execute called with data: {data}")
@@ -97,15 +106,12 @@ class MLService(BaseService):
         # Получаем параметр message из входных данных
         message = data.get("message", "No message provided")
         
-        # TODO: Здесь выызываем пайплайн обработки видео
         path = data.get("path", '')
         name = data.get("name", '')
-        #TODO результат писать в тот же файл. Оригинал делаем с припиской temp
+        
         result_dir = data.get("res_dir", 'var/results')
         if path == '' or name == '':
             logging.info(f"Путь не распознан")
-        # path = 'path/to/video'
-        # result_dir = 'directory/for/done/video'
         
         copy_file_to_directory(path, self.temp_dir)
         
