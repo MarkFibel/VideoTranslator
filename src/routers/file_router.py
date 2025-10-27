@@ -100,6 +100,16 @@ async def upload_file(
         
         logger.error(f"HTTP file upload error: {str(http_exc.detail)}", exc_info=True)
         
+        try:
+            session['last_uploaded_file'] = None
+            
+            if (file_tmp_name and os.path.exists(file_tmp_name)):
+                os.remove(file_tmp_name)
+            
+            logger.info(f"Current temporary file removed: {file_tmp_name}")
+        except Exception as e:
+            pass
+        
         raise HTTPException(http_exc.status_code, http_exc.detail)
         
     except Exception as e:
