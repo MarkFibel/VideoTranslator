@@ -15,7 +15,7 @@ class BaseTranslationModel:
         return {'status': True, 'error': 'Error description', 'text': 'some text', 'source_text': text}
 
 class OpusTextTranslationModel(BaseTranslationModel):
-    def __init__(self, cache_dir=settings.MODEL_CAHCE_DIR):
+    def __init__(self, cache_dir=settings.MODEL_CACHE_DIR):
         super().__init__()
         try:
             self.tokenizer = AutoTokenizer.from_pretrained("Helsinki-NLP/opus-mt-en-ru", cache_dir=cache_dir)

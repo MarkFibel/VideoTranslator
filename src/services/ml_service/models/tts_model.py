@@ -19,7 +19,7 @@ class BaseSpeechGenerationModel:
 
 
 class VitsAudioGenerationModel(BaseSpeechGenerationModel):
-    def __init__(self, model_name="facebook/mms-tts-rus", cache_dir=settings.MODEL_CAHCE_DIR):
+    def __init__(self, model_name="facebook/mms-tts-rus", cache_dir=settings.MODEL_CACHE_DIR):
         self.model_name = model_name
         self.model = VitsModel.from_pretrained(model_name, cache_dir=cache_dir)
         self.tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)

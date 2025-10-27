@@ -16,7 +16,7 @@ class BaseSpechRecognitionModel:
     
 
 class WhisperSpeechRecognitionModel(BaseSpechRecognitionModel):
-    def __init__(self, cache_dir=settings.MODEL_CAHCE_DIR, model_name="tiny"):
+    def __init__(self, cache_dir=settings.MODEL_CACHE_DIR, model_name="tiny"):
         super().__init__()
         self.model = whisper.load_model(model_name, download_root=cache_dir)
         
