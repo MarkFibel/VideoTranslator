@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     MAX_FILE_SIZE: int = 10 * 1024 * 1024  # 10MB в байтах
     
     # Временная директория
-    TEMP_DIR: str = "var/tmp"
+    TEMP_DIR: str = "var/temp"
     
     # Настройки сессий
     SESSIONS_SECRET_KEY: str = "change_me_in_production_please"
