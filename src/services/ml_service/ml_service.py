@@ -76,142 +76,179 @@ def clean_directory(directory, allowed_items):
 
 class MLService(BaseService):
     """
-    Сервис для обработки видео.
+    Сервис для обработки видео с применением ML-пайплайна.
+
+    Этот класс выполняет последовательную обработку видео, включающую:
+      - разбиение видео на кадры;
+      - извлечение и распознавание аудио;
+      - перевод текста;
+      - синтез нового аудио;
+      - обработку кадров;
+      - сборку финального видео с обновлённым звуком и кадрами.
+
+    Атрибуты:
+        translate (Callable): Функция или объект для перевода текста.
+        spech_recognize (Callable): Функция или объект для распознавания речи.
+        ocr (Callable): Функция или объект для оптического распознавания текста (OCR).
+        tts (Callable): Функция или объект для синтеза речи (Text-to-Speech).
+        temp_dir (str): Временная директория для промежуточных файлов.
     """
-    
+
     def __init__(self, temp_dir=settings.TEMP_DIR):
+        """
+        Инициализация ML-сервиса.
+
+        Args:
+            temp_dir (str): Путь к временной директории для хранения промежуточных данных.
+        """
         self.translate = get_translate()
         self.spech_recognize = get_spech_recognize()
         self.ocr = get_ocr()
         self.tts = get_tts()
-        
-        self.temp_dir = temp_dir    
-    
+        self.temp_dir = temp_dir
+
     def execute(self, data: dict) -> dict:
         """
-        Метод запуска обработки видео.
-        Для запуска необходимо передать путь к видео и имя файла.
-        Структура вызова через JSON-RPC:
-        {
-            "method": "ml.execute",
-            "params": {
-                "data": {
-                    "path": "path/to/video",
-                    "name": "video_name"
-                }
-            }
-        }
-        """
+        Основной метод для запуска пайплайна обработки видео.
 
+        Args:
+            data (dict): Входные данные с ключами:
+                - "path" (str): Путь к исходному видео.
+                - "name" (str): Имя видео (без расширения).
+                - "res_dir" (str, optional): Папка для сохранения результата.
+                - "message" (str, optional): Служебное сообщение.
+
+        Returns:
+            dict: Результат выполнения с ключами:
+                - "status" (str): Статус выполнения ("success" или "error").
+                - "message" (str): Сообщение о результате.
+                - "echo" (dict): Исходные данные.
+                - "service" (str): Имя сервиса.
+        """
         logger.info(f"MLService.execute called with data: {data}")
-        
-        # Получаем параметр message из входных данных
+
         message = data.get("message", "No message provided")
-        
         path = data.get("path", '')
         name = data.get("name", '')
-        
         result_dir = data.get("res_dir", 'var/results')
-        if path == '' or name == '':
-            logging.info(f"Путь не распознан")
-        
+
+        if not path or not name:
+            logging.info("❌ Путь или имя видео не указано")
+            return {"status": "error", "message": "Path or name missing"}
+
+        # Копируем видео во временную директорию
         copy_file_to_directory(path, self.temp_dir)
-        
-        path = '/'.join([self.temp_dir, os.path.basename(path)])
-        
+        path = os.path.join(self.temp_dir, os.path.basename(path))
+
+        # Запуск пайплайна обработки видео
         r = self.__process_video(path, name, result_dir)
-        if r['status']:
-            pass
-        
-        # Формируем ответ
+        if not r['status']:
+            return {"status": "error", "message": r.get('error', 'Processing failed')}
+
         result = {
             "status": "success",
             "message": f"Data received: {message}",
             "echo": data,
             "service": self.getName()
         }
-        
+
         logger.info(f"MLService.execute returning: {result}")
-        
         return result
-    
-    def __process_video(self, path: str, name: str, result_dir: str):
-        #✅⚠️❌
-        # Получаем кадры из видео
-        src_frames_dir = '/'.join([self.temp_dir, f'{name}_src_frames'])
+
+    def __process_video(self, path: str, name: str, result_dir: str) -> dict:
+        """
+        Проводит весь цикл обработки видео: извлечение, преобразование и сборка результата.
+
+        Этапы:
+            1. Разбиение видео на кадры.
+            2. Извлечение аудио.
+            3. Распознавание речи.
+            4. Перевод текста.
+            5. Генерация переведённого аудио.
+            6. Обработка кадров.
+            7. Переименование исходного видео.
+            8. Сборка нового видео с синхронизацией аудио.
+
+        Args:
+            path (str): Путь к исходному видеофайлу.
+            name (str): Имя видео (используется как префикс временных файлов).
+            result_dir (str): Путь к директории для сохранения результатов.
+
+        Returns:
+            dict: Словарь с результатом выполнения:
+                - "status" (bool): Успешность операции.
+                - "error" (str, optional): Сообщение об ошибке (если есть).
+        """
+        # --- Разбиение видео на кадры ---
+        src_frames_dir = os.path.join(self.temp_dir, f'{name}_src_frames')
         r = split_video_to_frames(path, src_frames_dir)
-        if r['status']:
-            logging.info(f"✅ Обработано кадров: {r['procced_frames']}")
-        else:
-            logging.info(f"❌ произошла ошибка в обработке кадров: {r['error']}")
+        if not r['status']:
+            logging.info(f"❌ Ошибка обработки кадров: {r['error']}")
             return {'status': False, 'error': r['error']}
-        
-        # Получаем аудио из видео
-        src_audio_dir = '/'.join([self.temp_dir, f'{name}.mp3'])
+        logging.info(f"✅ Обработано кадров: {r['procced_frames']}")
+
+        # --- Извлечение аудио ---
+        src_audio_dir = os.path.join(self.temp_dir, f'{name}.mp3')
         r = extract_audio_from_video(path, src_audio_dir)
-        if r['status']:
-            logging.info(f"✅ аудио успешно извлеченно")
-        else:
-            logging.info(f"❌ произошла ошибка в обработке аудио: {r['error']}")
+        if not r['status']:
+            logging.info(f"❌ Ошибка извлечения аудио: {r['error']}")
             return {'status': False, 'error': r['error']}
-        
-        # Получаем текст из аудио
+        logging.info("✅ Аудио успешно извлечено")
+
+        # --- Распознавание речи ---
         r = self.spech_recognize(src_audio_dir)
-        if r['status']:
-            logging.info(f"✅ Получен текст из аудио, Текст: {r['text'][:100]}")
-            text_from_audio = r['text']
-        else:
-            logging.info(f"❌ произошла ошибка в обработке аудио: {r['error']}")
+        if not r['status']:
+            logging.info(f"❌ Ошибка распознавания аудио: {r['error']}")
             return {'status': False, 'error': r['error']}
-        
-        # Получаем переводим текст
+        text_from_audio = r['text']
+        logging.info(f"✅ Распознанный текст: {text_from_audio[:100]}...")
+
+        # --- Перевод текста ---
         r = self.translate(text_from_audio)
-        if r['status']:
-            logging.info(f"✅ Текст переведен успешно, Текст: {r['text'][:100]}")
-            translated_text_from_audio = r['text']
-        else:
-            logging.info(f"❌ произошла ошибка в переводе текста: {r['error']}")
+        if not r['status']:
+            logging.info(f"❌ Ошибка перевода: {r['error']}")
             return {'status': False, 'error': r['error']}
-        
-        # Получаем аудио из переведнного текста
+        translated_text = r['text']
+        logging.info(f"✅ Текст переведён: {translated_text[:100]}...")
+
+        # --- Синтез переведённого аудио ---
         translated_audio_dir = f'{name}_translated'
-        r = self.tts(translated_text_from_audio, translated_audio_dir)
-        if r['status']:
-            logging.info(f"✅ Генерирование аудио завершено")
-        else:
-            logging.info(f"❌ произошла ошибка в генерации переведнного аудио: {r['error']}")
+        r = self.tts(translated_text, translated_audio_dir)
+        if not r['status']:
+            logging.info(f"❌ Ошибка синтеза аудио: {r['error']}")
             return {'status': False, 'error': r['error']}
-        
-        # Получаем перевод кадров из видео
-        translated_frames_fir = '/'.join([self.temp_dir, f'{name}_translated_frames'])
-        r = tr_frames(src_frames_dir, res_dir=translated_frames_fir) #TODO 
-        if r['status']:
-            logging.info(f"✅ Перевод фрэймов заверешен")
-        else:
-            logging.info(f"❌ произошла ошибка в переводе фреймов: {r['error']}")
+        logging.info("✅ Генерация переведённого аудио завершена")
+
+        # --- Обработка кадров ---
+        translated_frames_dir = os.path.join(self.temp_dir, f'{name}_translated_frames')
+        r = tr_frames(src_frames_dir, res_dir=translated_frames_dir)
+        if not r['status']:
+            logging.info(f"❌ Ошибка обработки кадров: {r['error']}")
             return {'status': False, 'error': r['error']}
-        
-        # Изменям имя оригинального видео на имя с припиской temp
+        logging.info("✅ Перевод кадров завершён")
+
+        # --- Переименование исходного видео ---
         file_name = os.path.basename(path)
         r = rename_file(self.temp_dir, file_name, f'temp_{file_name}')
-        if r['status']:
-            logging.info(f"✅ Файл переименован")
-        else:
-            logging.info(f"❌ произошла ошибка в обработке кадров: {r['error']}")
+        if not r['status']:
+            logging.info(f"❌ Ошибка переименования: {r['error']}")
             return {'status': False, 'error': r['error']}
-        
-        # Собираем новое видео
-        r = images_to_video_with_audio_auto_fps('/'.join([self.temp_dir, f'{name}_translated_frames']),
-                                                '/'.join([self.temp_dir, f'{name}_translated.wav']),
-                                                '/'.join([self.temp_dir, file_name]),
-                                                path.replace(file_name, f'temp_{file_name}'))
-        if r['status']:
-            logging.info(f"✅ Сборка видео завершена")
-        else:
-            logging.info(f"❌ произошла ошибка в сборке видео: {r['error']}")
+        logging.info("✅ Файл переименован")
+
+        # --- Сборка нового видео ---
+        r = images_to_video_with_audio_auto_fps(
+            os.path.join(self.temp_dir, f'{name}_translated_frames'),
+            os.path.join(self.temp_dir, f'{name}_translated.wav'),
+            os.path.join(self.temp_dir, file_name),
+            path.replace(file_name, f'temp_{file_name}')
+        )
+        if not r['status']:
+            logging.info(f"❌ Ошибка сборки видео: {r['error']}")
             return {'status': False, 'error': r['error']}
-        
+        logging.info("✅ Сборка видео завершена")
+
+        # --- Очистка временных файлов ---
         clean_directory(self.temp_dir, [file_name, f'temp_{file_name}'])
-        
+        logging.info("🧹 Временные файлы удалены")
+
         return {'status': True}
-        
