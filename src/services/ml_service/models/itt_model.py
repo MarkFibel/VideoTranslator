@@ -129,6 +129,7 @@ class EasyOCRModel(BaseOCRModel):
                
     def __call__(self, name: str, source_dir: str):
         destination_dir = '/'.join([self.temp_dir, f'{name}_translated'])
+        os.makedirs(destination_dir)
         paths = ['/'.join([source_dir, file_name]) for file_name in os.listdir(source_dir)]
         results_images = self.reader.readtext_batched(paths, workers=self.workers)
         
