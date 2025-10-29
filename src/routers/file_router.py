@@ -53,6 +53,7 @@ async def upload_file(
 
         file_id = uuid.uuid4().hex  # Генерируем уникальный идентификатор файла
         file_ext = get_file_extension_by_content_type(file.content_type if file.content_type else "")
+        file_name_without_ext, _ = os.path.splitext(file.filename)
         file_tmp_name = f"{file_id}.{file_ext}" if file_ext else file_id
 
         temp_file_path = os.path.join(temp_dir, file_tmp_name)  # Временный путь для сохранения файла
@@ -68,7 +69,7 @@ async def upload_file(
             method="ml.execute",
             params={
                 "data": {
-                    "name": file.filename,
+                    "name": file_name_without_ext,
                     "path": temp_file_path
                 }
             },
