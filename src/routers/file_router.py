@@ -53,8 +53,9 @@ async def upload_file(
 
         file_id = uuid.uuid4().hex  # Генерируем уникальный идентификатор файла
         file_ext = get_file_extension_by_content_type(file.content_type if file.content_type else "")
-        file_name_without_ext, _ = os.path.splitext(file.filename)
+
         file_tmp_name = f"{file_id}.{file_ext}" if file_ext else file_id
+        file_name_without_ext, _ = os.path.splitext(file_tmp_name)
 
         temp_file_path = os.path.join(temp_dir, file_tmp_name)  # Временный путь для сохранения файла
         with open(temp_file_path, "wb") as temp_file:
