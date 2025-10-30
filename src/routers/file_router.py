@@ -74,7 +74,7 @@ async def upload_file(
                     "path": temp_file_path
                 }
             },
-            timeout=120.
+            timeout=240.
         )
 
         # Сохраняем метаданные файла в сессию пользователя
