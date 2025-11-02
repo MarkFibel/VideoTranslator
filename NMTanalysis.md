@@ -53,7 +53,7 @@
 
 ---
 
-## Resourses
+## Resources
 
 - [Helsinki-NLP / OPUS-MT Models](https://huggingface.co/Helsinki-NLP)
 - [MarianMT / CTranslate2 documentation](https://github.com/OpenNMT/CTranslate2)
