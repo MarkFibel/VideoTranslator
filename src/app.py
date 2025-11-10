@@ -4,6 +4,7 @@ import asyncio
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastsession import FastSessionMiddleware
+from fastapi.templating import Jinja2Templates
 
 from src.config.app_config import settings
 from src.config.logging_config import setup_logging
@@ -77,6 +78,11 @@ def get_application() -> FastAPI:
     application.mount("/static", StaticFiles(directory="public"), name="static")
     logger.info("Static files mounted at /static")
     
+    # Настройка шаблонов jinja
+    templates = Jinja2Templates(directory="templates")
+    application.state.templates = templates
+    logger.info("Jinja2 templates configured")
+
     logger.info("FastAPI application initialized successfully")
     
     return application
