@@ -7,3 +7,5 @@ local
 docs/dev
 .github/
 .DS_Store
+mdr_*
+data/
