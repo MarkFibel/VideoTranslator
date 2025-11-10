@@ -1,20 +1,20 @@
 import logging
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
+
+from src.config.app_config import settings
 
 router = APIRouter(tags=["frontend"])
 logger = logging.getLogger(__name__)
 
 
 @router.get("/", response_class=HTMLResponse)
-async def get_index():
-    """Обслуживание главной страницы"""
+async def get_index(request: Request):
+    """Обслуживание главной страницы с формой загрузки видео"""
     
-    # Читаем HTML файл
-    with open("public/index.html", "r", encoding="utf-8") as f:
-        html_content = f.read()
+    context = {
+        "request": request,
+        "captcha_sitekey": settings.CAPTCHA_SITEKEY
+    }
     
-    # Создаем response с модифицированным HTML
-    response = HTMLResponse(content=html_content)
-    
-    return response
+    return request.app.state.templates.TemplateResponse("translator/index.html", context)

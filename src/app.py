@@ -79,7 +79,7 @@ def get_application() -> FastAPI:
     logger.info("Static files mounted at /static")
     
     # Настройка шаблонов jinja
-    templates = Jinja2Templates(directory="templates")
+    templates = Jinja2Templates(directory="src/templates")
     application.state.templates = templates
     logger.info("Jinja2 templates configured")
 

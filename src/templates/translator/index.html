@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+
+{% block title %}Главная страница{% endblock %}
+
+{% block head %}
+{# Permissions Policy для Yandex SmartCaptcha #}
+<meta http-equiv="Permissions-Policy" content="accelerometer=*, gyroscope=*, magnetometer=*">
+
+<link rel="icon" type="image/x-icon" href="{{ url_for('static', path='favicon.ico') }}">
+<link href="{{ url_for('static', path='css/translator.css') }}" rel="stylesheet">
+
+<!-- Подключаем Stimulus -->
+<script src="{{ url_for('static', path='js/stimulus.umd.js') }}"></script>
+
+<!-- Инициализация Stimulus и регистрация контроллеров -->
+<script type="module">
+    const application = Stimulus.Application.start();
+
+    // Статический список контроллеров для загрузки
+    const controllerFiles = [
+        'formController.js',
+        'fileController.js',
+        'buttonController.js',
+        'apiController.js',
+        'languageController.js',
+        'captchaController.js'
+    ];
+
+    console.log('Loading controllers:', controllerFiles);
+
+    for (const file of controllerFiles) {
+        try {
+            const module = await import(`{{ url_for('static', path='js/controllers/') }}${file}`);
+            // Имя контроллера берется из имени файла (buttonController.js -> button)
+            const identifier = file.replace('Controller.js', '').replace(/_/g, '-');
+            console.log(`Registering controller: ${identifier} from ${file}`);
+            application.register(identifier, module.default);
+        } catch (error) {
+            console.error(`Failed to load controller ${file}:`, error);
+        }
+    }
+</script>
+{% endblock %}
+
+{% block content %}
+
+<body class="min-h-screen flex flex-col items-center justify-center p-4">
+    <div class="max-w-4xl w-full">
+        <!-- Языковой переключатель - теперь над заголовком -->
+        <div class="language-switcher" data-controller="language">
+            <button class="language-btn" data-language-target="button" data-lang="ru"
+                data-action="click->language#switchLanguage">RU</button>
+            <button class="language-btn" data-language-target="button" data-lang="en"
+                data-action="click->language#switchLanguage">EN</button>
+        </div>
+
+        <header class="text-center mb-12">
+            <h1 class="text-4xl md:text-6xl font-bold mb-2 glow" data-i18n="title">VIDEO PROCESSOR</h1>
+            <p class="text-green-400" data-i18n="subtitle">Upload and process your videos with our advanced algorithms
+            </p>
+        </header>
+
+        <div class="matrix-card">
+            <div class="matrix-card-body">
+                <!-- Упрощенная форма -->
+                <form data-controller="form api" data-action="submit->form#submit"
+                    data-form-endpoint-value="/files/upload" data-form-captcha-outlet=".captcha-component"
+                    data-form-target="form">
+
+                    <!-- Компонент невидимой капчи -->
+                    {% if captcha_sitekey %}
+                    <div class="captcha-component" data-controller="captcha"
+                        data-captcha-sitekey-value="{{ captcha_sitekey }}" data-captcha-invisible-value="true">
+
+                        <!-- Контейнер для виджета SmartCaptcha -->
+                        <div class="captcha-container captcha-invisible" data-captcha-target="container"></div>
+
+                        <!-- Hidden input для хранения токена -->
+                        <input type="hidden" id="captcha_token" name="captcha_token" data-key="captcha_token"
+                            data-label="Капча" data-captcha-target="token" class="captcha-token-input">
+                    </div>
+                    {% endif %}
+
+                    <!-- Зона загрузки файла -->
+                    <div class="upload-zone" data-controller="file" data-file-target="container"
+                        data-file-max-size-value="104857600"
+                        data-file-accepted-types-value='["video/mp4", "video/mpeg", "video/quicktime", "video/x-msvideo"]'>
+
+                        <!-- Основная зона для загрузки (показывается до выбора файла) -->
+                        <label for="video-file" class="upload-dropzone" data-file-target="dropzone">
+                            <div class="upload-icon">
+                                <svg width="80" height="80" viewBox="0 0 24 24" fill="none"
+                                    xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M12 4L12 16M12 4L8 8M12 4L16 8" stroke="currentColor" stroke-width="2"
+                                        stroke-linecap="round" stroke-linejoin="round" />
+                                    <path d="M4 17V18C4 19.1046 4.89543 20 6 20H18C19.1046 20 20 19.1046 20 18V17"
+                                        stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                                </svg>
+                            </div>
+                            <h3 class="upload-title" data-i18n="upload-title">ЗАГРУЗИТЕ ВАШЕ ВИДЕО</h3>
+                            <p class="upload-subtitle" data-i18n="upload-subtitle">Выберите видеофайл для начала
+                                обработки</p>
+                            <button type="button" class="matrix-btn-upload" data-i18n="upload-button">ЗАГРУЗИТЬ
+                                ВИДЕО</button>
+                        </label>
+
+                        <input type="file" class="upload-input" id="video-file" name="video-file" data-key="video-file"
+                            data-label="Выберите видео файл" data-file-target="input"
+                            data-action="change->file#validateFile" required
+                            accept="video/mp4,video/mpeg,video/quicktime,video/x-msvideo">
+
+                        <!-- Информация о выбранном файле (показывается после выбора) -->
+                        <div class="file-selected d-none" data-file-target="fileInfo">
+                            <div class="file-info-content">
+                                <div class="file-icon" data-file-target="fileIcon">
+                                    <!-- Превью или иконка файла будет добавлена через JS -->
+                                </div>
+                                <div class="file-details-container">
+                                    <div class="file-name" data-file-target="fileName"></div>
+                                    <div class="file-details" data-file-target="fileDetails"></div>
+                                </div>
+                                <button type="button" class="file-remove-btn" data-action="click->file#clearFile"
+                                    title="Удалить файл">
+                                    ✕
+                                </button>
+                            </div>
+
+                            <!-- Прогресс-бар для загрузки/анализа -->
+                            <div class="upload-progress d-none" data-file-target="progress">
+                                <div class="progress-bar-container">
+                                    <div class="progress-bar-fill" data-file-target="progressBar"></div>
+                                </div>
+                            </div>
+
+                            <!-- Кнопка отправки (показывается после выбора файла) -->
+                            <button type="submit" class="matrix-btn" data-form-target="submitButton">
+                                <span class="button-text" data-i18n="submit-btn">ОТПРАВИТЬ ВИДЕО</span>
+                                <span class="button-spinner d-none">
+                                    <svg class="spinner" width="20" height="20" viewBox="0 0 50 50">
+                                        <circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5">
+                                        </circle>
+                                    </svg>
+                                    <span data-i18n="uploading">ЗАГРУЗКА...</span>
+                                </span>
+                            </button>
+                        </div>
+
+                        <!-- Сообщение об ошибке -->
+                        <div class="upload-error d-none" data-file-target="error"></div>
+                    </div>
+
+                </form>
+            </div>
+        </div>
+
+        <!-- Информационный блок "Как работает VideoProcessor" -->
+        <div class="how-it-works-section">
+            <h3 class="section-title" data-i18n="how-it-works">Как работает VideoProcessor</h3>
+            <div class="steps-container">
+                <div class="step-item">
+                    <div class="step-icon">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" />
+                            <path d="M12 8V12L15 15" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                        </svg>
+                    </div>
+                    <h4 class="step-number" data-i18n="step1-number">1. Загрузите видео</h4>
+                    <p class="step-description" data-i18n="step1-desc">Выберите и загрузите видеофайл на наш защищённый
+                        сервер</p>
+                </div>
+                <div class="step-item">
+                    <div class="step-icon">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path
+                                d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"
+                                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                    </div>
+                    <h4 class="step-number" data-i18n="step2-number">2. ИИ обработка</h4>
+                    <p class="step-description" data-i18n="step2-desc">Наш продвинутый ИИ анализирует и улучшает ваше
+                        видео</p>
+                </div>
+                <div class="step-item">
+                    <div class="step-icon">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path
+                                d="M21 15V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V15"
+                                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                            <path d="M7 10L12 15L17 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                stroke-linejoin="round" />
+                            <path d="M12 15V3" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                stroke-linejoin="round" />
+                        </svg>
+                    </div>
+                    <h4 class="step-number" data-i18n="step3-number">3. Скачайте результат</h4>
+                    <p class="step-description" data-i18n="step3-desc">Получите обработанное видео с улучшенным
+                        качеством</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Версия системы -->
+        <div class="version-info">
+            <p data-i18n="version">Продвинутая система обработки видео версия 1.0.0</p>
+        </div>
+    </div>
+</body>
+
+{% endblock %}
