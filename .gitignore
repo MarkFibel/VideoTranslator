@@ -4,3 +4,6 @@ venv/
 var/
 __pycache__/
 local
+docs/dev
+.github/
+.DS_Store

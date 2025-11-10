@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 @router.get("/", response_class=HTMLResponse)
 async def get_index():
-    """Обслуживание главной страницы с автоматической выдачей CSRF токена"""
+    """Обслуживание главной страницы"""
     
     # Читаем HTML файл
     with open("public/index.html", "r", encoding="utf-8") as f:
