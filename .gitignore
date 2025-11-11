@@ -9,3 +9,4 @@ docs/dev
 .DS_Store
 mdr_*
 data/
+dev/*
