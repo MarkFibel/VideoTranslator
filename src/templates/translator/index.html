@@ -64,7 +64,7 @@
             <div class="matrix-card-body">
                 <!-- Упрощенная форма -->
                 <form data-controller="form api" data-action="submit->form#submit"
-                    data-form-endpoint-value="/files/upload" data-form-captcha-outlet=".captcha-component"
+                    data-form-endpoint-value="/files/upload/stream" data-form-captcha-outlet=".captcha-component"
                     data-form-target="form">
 
                     <!-- Компонент невидимой капчи -->
@@ -119,16 +119,20 @@
                                     <div class="file-name" data-file-target="fileName"></div>
                                     <div class="file-details" data-file-target="fileDetails"></div>
                                 </div>
-                                <button type="button" class="file-remove-btn" data-action="click->file#clearFile"
-                                    title="Удалить файл">
-                                    ✕
-                                </button>
                             </div>
 
                             <!-- Прогресс-бар для загрузки/анализа -->
                             <div class="upload-progress d-none" data-file-target="progress">
                                 <div class="progress-bar-container">
-                                    <div class="progress-bar-fill" data-file-target="progressBar"></div>
+                                    <div class="progress-bar-fill" data-file-target="progressBar">
+                                        <!-- Текст процента внутри бара -->
+                                        <span class="progress-percent" data-file-target="progressPercent">0%</span>
+                                    </div>
+                                </div>
+                                
+                                <!-- Текст текущего этапа обработки -->
+                                <div class="progress-stage" data-file-target="progressStage">
+                                    Подготовка...
                                 </div>
                             </div>
 
@@ -142,6 +146,14 @@
                                     </svg>
                                     <span data-i18n="uploading">ЗАГРУЗКА...</span>
                                 </span>
+                            </button>
+
+                            <button type="button" class="matrix-btn d-none" data-form-target="downloadButton">
+                                <span class="button-text" data-i18n="download-btn">СКАЧАТЬ ВИДЕО</span>
+                            </button>
+
+                            <button type="button" class="matrix-btn matrix-btn-secondary d-none" data-form-target="resetButton" data-action="click->form#resetSession">
+                                <span class="button-text" data-i18n="reset-btn">ЗАГРУЗИТЬ ЕЩЁ</span>
                             </button>
                         </div>
 

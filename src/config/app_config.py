@@ -38,6 +38,8 @@ class Settings(BaseSettings):
     
     # Настройки Yandex SmartCaptcha
     CAPTCHA_SITEKEY: str = ""  # Client-side ключ Yandex SmartCaptcha (получите на https://yandex.cloud/ru/services/smartcaptcha)
+    CAPTCHA_SERVER_KEY: str = ""  # Server-side ключ для проверки капчи на сервере
+    CAPTCHA_ENABLED: bool = False  # Включить/выключить проверку капчи (для разработки можно отключить)
     
 
 settings = Settings()

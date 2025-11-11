@@ -172,17 +172,22 @@ class SSEUploadOrchestrator:
         file_id = None
         
         try:
-            # 1. Валидация состояния сессии
+            # 1. Валидация состояния сессии (ДО установки pending=True!)
             validation_error = self.file_service.validate_session_state(session)
             if validation_error:
                 error_code, error_message = validation_error.split(":", 1)
+                
+                # НЕ устанавливаем pending=True если валидация не прошла
+                # Это позволит пользователю повторить запрос после исправления проблемы
                 yield format_sse_error(
                     error_code=error_code,
                     error_message=error_message,
-                    stage_failed="validation"
+                    stage_failed="validation",
+                    recoverable=True  # Ошибка валидации - можно повторить после исправления
                 )
                 return
             
+            # Только после успешной валидации устанавливаем pending
             session['pending'] = True
             
             # 2. Инициализация

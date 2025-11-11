@@ -21,7 +21,9 @@ export default class extends Controller {
         "fileIcon",
         "error",
         "progress",
-        "progressBar"
+        "progressBar",
+        "progressPercent",  // Новый target для текста процента
+        "progressStage"     // Новый target для текста этапа
     ];
 
     static values = {
@@ -42,6 +44,11 @@ export default class extends Controller {
         // Устанавливаем обработчики для drag & drop
         this.setupDragAndDrop();
 
+        // Слушаем события прогресса от formController
+        this.boundUpdateProgress = this.updateProgress.bind(this);
+        this.element.addEventListener('progress:update', this.boundUpdateProgress);
+        console.log('[FileController] Added progress:update listener');
+
         // Уведомляем формController о готовности
         this.dispatchReadyEvent();
     }
@@ -49,6 +56,11 @@ export default class extends Controller {
     disconnect() {
         // Очищаем обработчики
         this.removeDragAndDrop();
+
+        // Удаляем слушатель прогресса
+        if (this.boundUpdateProgress) {
+            this.element.removeEventListener('progress:update', this.boundUpdateProgress);
+        }
     }
 
     /**
@@ -500,13 +512,103 @@ export default class extends Controller {
     }
 
     /**
-     * Обновить прогресс-бар
-     * @param {number} percent - Прогресс в процентах (0-100)
+     * Обновить прогресс-бар (новая версия для SSE)
+     * @param {CustomEvent|number} eventOrPercent - Событие с данными прогресса или просто процент
      */
-    updateProgress(percent) {
-        if (this.hasProgressBarTarget) {
-            this.progressBarTarget.style.width = `${percent}%`;
+    updateProgress(eventOrPercent) {
+        console.log('[FileController] updateProgress called with:', eventOrPercent);
+
+        // Поддержка старого API (число)
+        if (typeof eventOrPercent === 'number') {
+            const percent = eventOrPercent;
+            console.log('[FileController] Using old API (number):', percent);
+            // Показываем прогресс-бар если он скрыт
+            this.showProgress(percent);
+            return;
         }
+
+        // Новый API для SSE (событие)
+        const event = eventOrPercent;
+        const { progress, stage } = event.detail || {};
+
+        console.log('[FileController] SSE Progress update:', { 
+            progress, 
+            stage,
+            hasProgressTarget: this.hasProgressTarget,
+            hasProgressBarTarget: this.hasProgressBarTarget,
+            hasProgressPercentTarget: this.hasProgressPercentTarget,
+            hasProgressStageTarget: this.hasProgressStageTarget
+        });
+
+        // Показываем прогресс-бар если он скрыт
+        if (this.hasProgressTarget) {
+            console.log('[FileController] Removing d-none from progress');
+            this.progressTarget.classList.remove('d-none');
+        } else {
+            console.warn('[FileController] progressTarget not found!');
+        }
+
+        // Обновляем прогресс-бар
+        if (this.hasProgressBarTarget && progress !== undefined) {
+            console.log('[FileController] Setting progress bar width to', progress + '%');
+            this.progressBarTarget.style.width = `${progress}%`;
+        }
+
+        // Обновляем текст процента
+        if (this.hasProgressPercentTarget && progress !== undefined) {
+            console.log('[FileController] Setting progress percent text to', progress + '%');
+            this.progressPercentTarget.textContent = `${progress}%`;
+        }
+
+        // Обновляем название этапа
+        if (this.hasProgressStageTarget && stage) {
+            const stageLabel = this.getStageLabel(stage);
+            console.log('[FileController] Setting stage label to', stageLabel);
+            this.progressStageTarget.textContent = stageLabel;
+        }
+    }
+
+    /**
+     * Получить человекочитаемое название этапа
+     * @param {string} stage - Техническое имя этапа
+     * @returns {string} - Человекочитаемое название
+     */
+    getStageLabel(stage) {
+        // Пытаемся получить перевод из languageController
+        const i18nKey = `stage-${stage}`;
+        
+        // Ищем languageController
+        const languageElement = document.querySelector('[data-controller*="language"]');
+        if (languageElement) {
+            const languageController = this.application.getControllerForElementAndIdentifier(
+                languageElement,
+                'language'
+            );
+            
+            if (languageController && typeof languageController.getTranslation === 'function') {
+                const translation = languageController.getTranslation(i18nKey);
+                if (translation) {
+                    return translation;
+                }
+            }
+        }
+
+        // Fallback: используем встроенный словарь (русский)
+        const stageLabels = {
+            'initializing': 'Инициализация',
+            'file_saved': 'Файл сохранен',
+            'copying_file': 'Копирование файла',
+            'splitting_frames': 'Разбиение на кадры',
+            'extracting_audio': 'Извлечение аудио',
+            'recognizing_speech': 'Распознавание речи',
+            'translating_text': 'Перевод текста',
+            'generating_tts': 'Генерация озвучки',
+            'processing_frames': 'Обработка видеокадров',
+            'assembling_video': 'Сборка финального видео',
+            'complete': 'Обработка завершена'
+        };
+
+        return stageLabels[stage] || stage || 'Обработка...';
     }
 
     /**
@@ -557,5 +659,91 @@ export default class extends Controller {
             }
         });
         this.element.dispatchEvent(event);
+    }
+
+    /**
+     * Восстанавливает информацию о файле из сессии
+     * @param {Object} fileData - Данные файла из сессии {filename, size, upload_time}
+     */
+    restoreFromSession(fileData) {
+        const timestamp = new Date().toISOString();
+        console.log(`[${timestamp}] 🔄 FileController.restoreFromSession`, fileData);
+
+        if (!fileData || !fileData.filename) {
+            console.warn(`[${timestamp}] ⚠️  Некорректные данные файла`);
+            return;
+        }
+
+        // Устанавливаем имя файла
+        if (this.hasFileNameTarget) {
+            this.fileNameTarget.textContent = fileData.filename;
+        }
+
+        // Устанавливаем детали файла
+        if (this.hasFileDetailsTarget) {
+            const details = [];
+            
+            // Размер файла
+            if (fileData.size) {
+                details.push(this.formatFileSize(fileData.size));
+            }
+            
+            // Время загрузки
+            if (fileData.upload_time) {
+                const uploadDate = new Date(fileData.upload_time);
+                details.push(uploadDate.toLocaleString('ru-RU'));
+            }
+
+            this.fileDetailsTarget.textContent = details.join(' • ');
+        }
+
+        // Определяем иконку по расширению файла
+        if (this.hasFileIconTarget) {
+            const extension = fileData.filename.split('.').pop().toLowerCase();
+            this.updateFileIconByExtension(extension);
+        }
+
+        // Показываем информацию о файле
+        // 1. Скрываем дропзону
+        if (this.hasDropzoneTarget) {
+            this.dropzoneTarget.classList.add('hidden');
+        }
+
+        // 2. Показываем информацию о файле
+        if (this.hasFileInfoTarget) {
+            this.fileInfoTarget.classList.remove('d-none');
+            // Триггерим reflow для корректной анимации
+            this.fileInfoTarget.offsetHeight;
+            this.fileInfoTarget.classList.add('visible');
+        }
+
+        console.log(`[${timestamp}] ✅ Файл восстановлен из сессии`);
+    }
+
+    /**
+     * Обновляет иконку файла по расширению (без доступа к File объекту)
+     * @param {string} extension - Расширение файла (без точки)
+     */
+    updateFileIconByExtension(extension) {
+        const iconElement = this.fileIconTarget;
+        
+        // Очищаем предыдущее содержимое
+        iconElement.innerHTML = '';
+        iconElement.className = 'file-icon';
+
+        // Определяем тип файла по расширению
+        const videoExtensions = ['mp4', 'avi', 'mov', 'mkv', 'webm', 'flv', 'wmv'];
+        const audioExtensions = ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a'];
+        const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg', 'webp'];
+
+        if (videoExtensions.includes(extension)) {
+            iconElement.innerHTML = this.getVideoIcon();
+        } else if (audioExtensions.includes(extension)) {
+            iconElement.innerHTML = this.getAudioIcon();
+        } else if (imageExtensions.includes(extension)) {
+            iconElement.innerHTML = this.getImageIcon();
+        } else {
+            iconElement.innerHTML = this.getFileIcon();
+        }
     }
 }

@@ -606,19 +606,56 @@ body {
 
 .progress-bar-container {
     width: 100%;
-    height: 8px;
+    height: 30px;
     background: rgba(0, 20, 0, 0.8);
     border: 1px solid #00ff00;
-    border-radius: 4px;
+    border-radius: 6px;
     overflow: hidden;
+    box-shadow: inset 0 0 10px rgba(0, 255, 0, 0.2);
 }
 
 .progress-bar-fill {
+    position: relative;
     height: 100%;
     background: linear-gradient(90deg, #00ff00, #00cc00);
     width: 0%;
-    transition: width 0.3s ease;
-    box-shadow: 0 0 10px #00ff00;
+    transition: width 0.5s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    box-shadow: 0 0 15px #00ff00;
+}
+
+/* Текст процента внутри прогресс-бара */
+.progress-percent {
+    color: #000;
+    font-weight: bold;
+    font-size: 14px;
+    z-index: 1;
+    text-shadow: none;
+    padding: 0 6px;
+}
+
+/* Текст текущего этапа обработки */
+.progress-stage {
+    margin-top: 10px;
+    text-align: center;
+    color: #00ff00;
+    font-size: 14px;
+    font-weight: bold;
+    text-shadow: 0 0 5px #00ff00;
+    min-height: 20px;
+    animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.7;
+    }
 }
 
 /* Ошибка загрузки */

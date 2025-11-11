@@ -4,7 +4,7 @@ import asyncio
 from datetime import datetime, timezone
 import logging
 from starlette.status   import HTTP_500_INTERNAL_SERVER_ERROR
-from fastapi            import APIRouter, HTTPException, UploadFile, Request
+from fastapi            import APIRouter, HTTPException, UploadFile, Request, Depends, Form
 from fastapi.responses  import FileResponse, JSONResponse, StreamingResponse
 
 from src.transport.rabbitmq.producer import RPCProducer
@@ -12,6 +12,7 @@ from src.config.app_config import settings
 from src.utils.files_utils import get_file_extension_by_content_type
 from src.utils.sse_utils import get_sse_headers
 from src.utils.upload_utils import SSEUploadOrchestrator
+from src.dependencies import verify_captcha_token
 
 router = APIRouter(prefix='/files', tags=["files"])
 logger = logging.getLogger(__name__)
@@ -20,7 +21,8 @@ logger = logging.getLogger(__name__)
 @router.post("/upload")
 async def upload_file(
     file: UploadFile,
-    request: Request
+    request: Request,
+    _: None = Depends(verify_captcha_token)
 ) -> JSONResponse:
     logger.info(f"File upload started. Filename: {file.filename}, Content-Type: {file.content_type}")
     
@@ -135,6 +137,51 @@ async def upload_file(
         logger.error(f"Unexpected file upload error: {str(e)}", exc_info=True)
         raise HTTPException(HTTP_500_INTERNAL_SERVER_ERROR, f"Internal server error: {str(e)}")
 
+@router.get("/session/status")
+async def get_session_status(request: Request) -> JSONResponse:
+    """
+    Получение статуса сессии пользователя.
+    Возвращает информацию о текущем состоянии обработки файла.
+    
+    :param request: Объект запроса FastAPI
+    :return: JSON с данными о статусе сессии
+    """
+    logger.info("Session status requested.")
+    
+    try:
+        session = request.state.session.get_session()
+        
+        # Получаем базовые флаги состояния
+        pending = session.get('pending', False)
+        need_download = session.get('need_download', False)
+        
+        # Получаем метаданные файла если они есть
+        file_metadata = session.get('last_uploaded_file', {})
+        
+        # Формируем минимальный ответ
+        response_data = {
+            "pending": pending,
+            "need_download": need_download,
+            "file": None
+        }
+        
+        # Если есть файл для скачивания, добавляем его метаданные
+        if need_download and file_metadata:
+            response_data["file"] = {
+                "filename": file_metadata.get("filename", ""),
+                "size": file_metadata.get("size", 0),
+                "upload_time": file_metadata.get("upload_time", "")
+            }
+        
+        logger.info(f"Session status: pending={pending}, need_download={need_download}")
+        
+        return JSONResponse(response_data, status_code=200)
+        
+    except Exception as e:
+        logger.error(f"Error getting session status: {str(e)}", exc_info=True)
+        raise HTTPException(HTTP_500_INTERNAL_SERVER_ERROR, {"code": "internal_server_error", "detail": "Ошибка получения статуса сессии"})
+
+
 @router.get("/download/")
 async def download_file(request: Request) -> FileResponse:
     """
@@ -159,7 +206,8 @@ async def download_file(request: Request) -> FileResponse:
             logger.error(f"No files found for File ID: {file_metadata.get('file_id', '')}")
             raise HTTPException(404, {"code": "file_not_found", "detail": "Файл не найден"})
 
-        session['need_download'] = False
+        # НЕ сбрасываем need_download - пользователь может скачивать файл многократно
+        # session['need_download'] = False  # УБРАНО: позволяем повторные скачивания
 
         # Возвращаем найденный файл
         return FileResponse(path=file_path, filename=file_metadata.get('filename', ''), media_type=file_metadata.get('content_type', ''))
@@ -172,10 +220,53 @@ async def download_file(request: Request) -> FileResponse:
         raise HTTPException(HTTP_500_INTERNAL_SERVER_ERROR, {"code": "internal_server_error", "detail": "Произошла ошибка. Пожалуйста, попробуйте позже."})
 
 
+@router.post("/session/reset")
+async def reset_session(request: Request) -> JSONResponse:
+    """
+    Сброс сессии пользователя и очистка всех данных о файлах.
+    Удаляет временные файлы и подготавливает сессию для новой загрузки.
+    
+    :param request: Объект запроса FastAPI
+    :return: JSON с подтверждением сброса
+    """
+    logger.info("Session reset requested.")
+    
+    try:
+        session = request.state.session.get_session()
+        
+        # Удаляем временный файл если он есть
+        file_metadata = session.get('last_uploaded_file', {})
+        if file_metadata:
+            file_path = file_metadata.get('file_path', '')
+            if file_path and os.path.exists(file_path):
+                try:
+                    os.remove(file_path)
+                    logger.info(f"File removed during session reset: {file_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to remove file during session reset: {e}")
+        
+        # Очищаем все флаги и данные сессии
+        session['pending'] = False
+        session['need_download'] = False
+        session['last_uploaded_file'] = None
+        
+        logger.info("Session reset completed successfully")
+        
+        return JSONResponse(
+            {"code": "success", "detail": "Сессия успешно сброшена"},
+            status_code=200
+        )
+        
+    except Exception as e:
+        logger.error(f"Error resetting session: {str(e)}", exc_info=True)
+        raise HTTPException(HTTP_500_INTERNAL_SERVER_ERROR, {"code": "internal_server_error", "detail": "Ошибка сброса сессии"})
+
+
 @router.post("/upload/stream")
 async def upload_file_stream(
     file: UploadFile,
-    request: Request
+    request: Request,
+    captcha_token: str = Form(None, alias="captcha_token")
 ) -> StreamingResponse:
     """
     Загрузка файла с SSE streaming прогресса.
@@ -188,7 +279,26 @@ async def upload_file_stream(
     """
     logger.info(f"SSE upload started: {file.filename}")
     
+    # Проверяем капчу перед началом стриминга
+    from src.utils.captcha_utils import verify_captcha, get_client_ip
+    
+    client_ip = get_client_ip(request)
+    is_captcha_valid = await verify_captcha(captcha_token or "", client_ip)
+    
+    if not is_captcha_valid:
+        logger.warning(f"Captcha verification failed for SSE upload from IP: {client_ip}")
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "CAPTCHA_FAILED",
+                "detail": "Проверка капчи не пройдена. Пожалуйста, попробуйте снова."
+            }
+        )
+    
     async def event_generator():
+        session = None
+        completed_successfully = False
+        
         try:
             # Получаем сессию
             session = request.state.session.get_session()
@@ -197,11 +307,32 @@ async def upload_file_stream(
             orchestrator = SSEUploadOrchestrator()
             async for event in orchestrator.upload_with_progress(file, session):
                 logger.info(f"SSE event yielded: {event[:200]}")  # Логируем первые 200 символов
+                
+                # Проверяем успешное завершение по событию complete
+                if 'event: complete' in event:
+                    completed_successfully = True
+                
                 yield event
                 await asyncio.sleep(0)  # Даем возможность отправить событие немедленно
                 
         except Exception as e:
             logger.error(f"Critical error in SSE event generator: {e}", exc_info=True)
+            
+            # КРИТИЧЕСКИ ВАЖНО: Очищаем состояние сессии при критической ошибке
+            if session:
+                session['pending'] = False
+                session['need_download'] = False
+                # Удаляем метаданные файла, если он был сохранен
+                if session.get('last_uploaded_file'):
+                    file_path = session['last_uploaded_file'].get('file_path', '')
+                    if file_path and os.path.exists(file_path):
+                        try:
+                            os.remove(file_path)
+                            logger.info(f"Temp file removed after critical error: {file_path}")
+                        except Exception as cleanup_error:
+                            logger.warning(f"Failed to cleanup temp file: {cleanup_error}")
+                    session['last_uploaded_file'] = None
+            
             from src.utils.sse_utils import format_sse_error
             yield format_sse_error(
                 error_code="INTERNAL_ERROR",
@@ -209,6 +340,30 @@ async def upload_file_stream(
                 stage_failed="streaming",
                 error_details=str(e)
             )
+            
+        finally:
+            # КРИТИЧЕСКИ ВАЖНО: Этот блок выполняется ВСЕГДА, даже при разрыве соединения
+            # Если обработка не завершилась успешно - очищаем pending флаг
+            if session and not completed_successfully:
+                # Проверяем, установлен ли pending (обработка началась но не завершилась)
+                if session.get('pending', False):
+                    logger.warning(f"SSE connection interrupted for file {file.filename}. Cleaning up session state.")
+                    
+                    session['pending'] = False
+                    # НЕ устанавливаем need_download=False, т.к. файл мог быть обработан
+                    # но событие complete не дошло до клиента
+                    
+                    # Удаляем только если файл НЕ был успешно обработан
+                    # (определяем по отсутствию need_download флага)
+                    if not session.get('need_download', False) and session.get('last_uploaded_file'):
+                        file_path = session['last_uploaded_file'].get('file_path', '')
+                        if file_path and os.path.exists(file_path):
+                            try:
+                                os.remove(file_path)
+                                logger.info(f"Temp file removed after connection interrupt: {file_path}")
+                            except Exception as cleanup_error:
+                                logger.warning(f"Failed to cleanup interrupted upload: {cleanup_error}")
+                        session['last_uploaded_file'] = None
     
     return StreamingResponse(
         event_generator(),
