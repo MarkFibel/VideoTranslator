@@ -59,7 +59,9 @@ def format_sse_event(
         lines.append(f"data: {line}")
     
     # Добавляем пустую строку в конце (обязательно для SSE)
+    # Важно: SSE сообщения разделяются двойным \n\n
     lines.append("")
+    lines.append("")  # Вторая пустая строка для двойного \n\n
     
     return '\n'.join(lines)
 
@@ -287,7 +289,7 @@ def validate_sse_message(data: Dict[str, Any]) -> bool:
     """
     try:
         # Проверяем наличие обязательных полей
-        required_fields = ['progress', 'stage', 'stage_label', 'status']
+        required_fields = ['progress', 'stage', 'status']
         for field in required_fields:
             if field not in data:
                 return False

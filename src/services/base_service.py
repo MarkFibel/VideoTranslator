@@ -14,6 +14,10 @@ class BaseService:
     def __init__(self):
         self._start_time: Optional[float] = None
         self._stage_definition: Optional[ServiceStageDefinition] = None
+        self._current_stage_id: Optional[str] = None
+        self._current_stage_index: int = -1  # Индекс в списке этапов
+        self._current_substep: int = 0
+        self._current_total_substeps: int = 0
     
     def get_stage_definition(self) -> ServiceStageDefinition:
         """
@@ -164,6 +168,161 @@ settings = Settings()
             return int(max(0, eta))
         
         return None
+    #endregion
+    
+    #region Методы управления этапами
+    def set_stage(self, stage_id: str, total_substeps: int = 0):
+        """
+        Установить текущий этап обработки.
+        
+        :param stage_id: ID этапа из конфигурации
+        :param total_substeps: Общее количество подэтапов (если есть)
+        """
+        self._current_stage_id = stage_id
+        self._current_substep = 0
+        self._current_total_substeps = total_substeps
+        
+        # Найти индекс этапа в списке
+        stages = self.get_stage_definition().get_all_stages()
+        for i, stage in enumerate(stages):
+            if stage.id == stage_id:
+                self._current_stage_index = i
+                break
+    
+    def next_stage(self, total_substeps: int = 0) -> bool:
+        """
+        Автоматически перейти к следующему этапу из конфигурации.
+        
+        :param total_substeps: Общее количество подэтапов для следующего этапа
+        :return: True если переход выполнен, False если это был последний этап
+        """
+        stages = self.get_stage_definition().get_all_stages()
+        
+        # Если это первый вызов, начинаем с первого этапа
+        if self._current_stage_index == -1:
+            if len(stages) > 0:
+                self._current_stage_index = 0
+                self._current_stage_id = stages[0].id
+                self._current_substep = 0
+                self._current_total_substeps = total_substeps
+                return True
+            return False
+        
+        # Переходим к следующему этапу
+        if self._current_stage_index < len(stages) - 1:
+            self._current_stage_index += 1
+            self._current_stage_id = stages[self._current_stage_index].id
+            self._current_substep = 0
+            self._current_total_substeps = total_substeps
+            return True
+        
+        return False
+    
+    def start_first_stage(self, total_substeps: int = 0):
+        """
+        Начать с первого этапа из конфигурации.
+        Удобный метод для явного начала обработки.
+        
+        :param total_substeps: Общее количество подэтапов для первого этапа
+        """
+        self.next_stage(total_substeps)
+    
+    def increment_substep(self):
+        """Увеличить счетчик текущего подэтапа."""
+        if self._current_total_substeps > 0:
+            self._current_substep = min(
+                self._current_substep + 1,
+                self._current_total_substeps
+            )
+    
+    def set_substep(self, substep: int):
+        """
+        Установить текущий подэтап напрямую.
+        
+        :param substep: Номер подэтапа
+        """
+        if self._current_total_substeps > 0:
+            self._current_substep = min(substep, self._current_total_substeps)
+    
+    def get_current_progress(self) -> int:
+        """
+        Получить текущий прогресс на основе активного этапа.
+        
+        :return: Процент выполнения (0-100)
+        """
+        if self._current_stage_id is None:
+            return 0
+        
+        stage_definition = self.get_stage_definition()
+        base_progress = stage_definition.get_progress_for_stage(self._current_stage_id)
+        
+        # Если есть подэтапы, корректируем прогресс внутри этапа
+        if self._current_total_substeps > 0 and self._current_substep > 0:
+            # Получаем следующий этап для расчета диапазона
+            stages = stage_definition.get_all_stages()
+            current_index = next(
+                (i for i, s in enumerate(stages) if s.id == self._current_stage_id),
+                None
+            )
+            
+            if current_index is not None and current_index < len(stages) - 1:
+                next_progress = stage_definition.get_progress_for_stage(
+                    stages[current_index + 1].id
+                )
+                progress_range = next_progress - base_progress
+                
+                # Рассчитываем прогресс внутри этапа
+                substep_progress = (self._current_substep / self._current_total_substeps) * progress_range
+                return min(100, int(base_progress + substep_progress))
+        
+        return base_progress
+    
+    def get_current_stage_message(self, include_eta: bool = False) -> dict:
+        """
+        Получить сообщение о текущем прогресе без параметров.
+        Автоматически использует текущий этап и прогресс.
+        
+        :param include_eta: Включить расчет ETA
+        :return: Словарь с сообщением о прогрессе
+        """
+        if self._current_stage_id is None:
+            return self.create_progress_message(
+                progress=0,
+                stage="initializing",
+                status="processing"
+            )
+        
+        progress = self.get_current_progress()
+        
+        # Если есть подэтапы, включаем их в детали
+        if self._current_total_substeps > 0:
+            details = {
+                "current_step": self._current_substep,
+                "total_steps": self._current_total_substeps
+            }
+            
+            if include_eta:
+                eta = self._calculate_eta(progress)
+                if eta is not None:
+                    details["eta_seconds"] = eta
+            
+            return self.create_progress_message(
+                progress=progress,
+                stage=self._current_stage_id,
+                details=details
+            )
+        else:
+            details = None
+            if include_eta:
+                eta = self._calculate_eta(progress)
+                if eta is not None:
+                    details = {"eta_seconds": eta}
+            
+            return self.create_progress_message(
+                progress=progress,
+                stage=self._current_stage_id,
+                details=details
+            )
     #endregion
     
     #region Вспомогательные методы для создания стандартизированных ответов

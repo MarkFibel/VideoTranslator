@@ -1,14 +1,17 @@
 import os
 import uuid
+import asyncio
 from datetime import datetime, timezone
 import logging
 from starlette.status   import HTTP_500_INTERNAL_SERVER_ERROR
 from fastapi            import APIRouter, HTTPException, UploadFile, Request
-from fastapi.responses  import FileResponse, JSONResponse
+from fastapi.responses  import FileResponse, JSONResponse, StreamingResponse
 
 from src.transport.rabbitmq.producer import RPCProducer
 from src.config.app_config import settings
 from src.utils.files_utils import get_file_extension_by_content_type
+from src.utils.sse_utils import get_sse_headers
+from src.utils.upload_utils import SSEUploadOrchestrator
 
 router = APIRouter(prefix='/files', tags=["files"])
 logger = logging.getLogger(__name__)
@@ -167,3 +170,48 @@ async def download_file(request: Request) -> FileResponse:
     except Exception as e:
         logger.error(f"Unexpected file download error for File ID `{file_metadata.get('file_id', '')}`: {str(e)}", exc_info=True)
         raise HTTPException(HTTP_500_INTERNAL_SERVER_ERROR, {"code": "internal_server_error", "detail": "Произошла ошибка. Пожалуйста, попробуйте позже."})
+
+
+@router.post("/upload/stream")
+async def upload_file_stream(
+    file: UploadFile,
+    request: Request
+) -> StreamingResponse:
+    """
+    Загрузка файла с SSE streaming прогресса.
+    POST запрос сразу возвращает SSE поток.
+    
+    Отправляет события:
+    - event: progress - промежуточный прогресс
+    - event: complete - успешное завершение
+    - event: error - ошибка обработки
+    """
+    logger.info(f"SSE upload started: {file.filename}")
+    
+    async def event_generator():
+        try:
+            # Получаем сессию
+            session = request.state.session.get_session()
+            
+            # Используем оркестратор для обработки
+            orchestrator = SSEUploadOrchestrator()
+            async for event in orchestrator.upload_with_progress(file, session):
+                logger.info(f"SSE event yielded: {event[:200]}")  # Логируем первые 200 символов
+                yield event
+                await asyncio.sleep(0)  # Даем возможность отправить событие немедленно
+                
+        except Exception as e:
+            logger.error(f"Critical error in SSE event generator: {e}", exc_info=True)
+            from src.utils.sse_utils import format_sse_error
+            yield format_sse_error(
+                error_code="INTERNAL_ERROR",
+                error_message="Критическая ошибка сервера",
+                stage_failed="streaming",
+                error_details=str(e)
+            )
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers=get_sse_headers()
+    )
