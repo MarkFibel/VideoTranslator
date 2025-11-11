@@ -4,7 +4,7 @@
 
 ## Архитектура взаимодействия
 
-```
+```js
 API Server (RPCProducer)  →  RabbitMQ Queue  →  Worker (RPCConsumer)  →  TestService
                           ←                   ←                       ←
 ```
@@ -59,6 +59,7 @@ API Server (RPCProducer)  →  RabbitMQ Queue  →  Worker (RPCConsumer)  →  T
 ```
 
 **Ответ:**
+
 ```json
 {
   "jsonrpc": "2.0",
@@ -93,6 +94,7 @@ API Server (RPCProducer)  →  RabbitMQ Queue  →  Worker (RPCConsumer)  →  T
 ```
 
 **Ответ:**
+
 ```json
 {
   "jsonrpc": "2.0",
@@ -125,6 +127,7 @@ API Server (RPCProducer)  →  RabbitMQ Queue  →  Worker (RPCConsumer)  →  T
 ```
 
 **Ответ:**
+
 ```json
 {
   "jsonrpc": "2.0",
@@ -206,7 +209,7 @@ Message(
 )
 ```
 
-#### Важные свойства:
+#### Важные свойства
 
 - **correlation_id**: Уникальный UUID, связывающий запрос и ответ
 - **reply_to**: Имя временной очереди для получения ответа (Direct Reply-to pattern)
@@ -218,18 +221,20 @@ Message(
 ### Запуск тестов
 
 1. **Запустите воркер** (в отдельном терминале):
+
 ```powershell
 python -m src.worker
 ```
 
 2. **Запустите тест RabbitMQ**:
+
 ```powershell
 python test_rabbitmq.py
 ```
 
 ### Ожидаемый вывод
 
-```
+```js
 ============================================================
 RabbitMQ RPC Producer Test
 ============================================================
@@ -262,7 +267,8 @@ Get-Content var/log/app.log -Tail 50 -Wait
 ### Проверка очереди RabbitMQ
 
 Если у вас установлен RabbitMQ Management Plugin:
-- URL: http://localhost:15672
+
+- URL: <http://localhost:15672>
 - Логин: guest / Пароль: guest
 - Очередь: `rpc_queue`
 
@@ -293,6 +299,7 @@ RABBITMQ_RPC_QUEUE=rpc_queue
 Чтобы создать новый сервис с такой же структурой сообщений:
 
 1. **Создайте класс сервиса**:
+
 ```python
 from src.services.base_service import BaseService
 
@@ -305,6 +312,7 @@ class VideoProcessingService(BaseService):
 2. **Сохраните в** `src/services/video_processing_service.py`
 
 3. **Вызывайте через RPC**:
+
 ```python
 result = await producer.call(
     method="video_processing.execute",  # Имя автоматически генерируется
@@ -316,21 +324,28 @@ result = await producer.call(
 ## Troubleshooting
 
 ### Ошибка: "Producer not connected"
+
 **Решение**: Вызовите `await producer.connect()` перед `producer.call()`
 
 ### Ошибка: "RPC request timeout"
-**Решение**: 
+
+**Решение**:
+
 - Проверьте, что воркер запущен: `python -m src.worker`
 - Увеличьте timeout в параметре `call(timeout=60.0)`
 
 ### Ошибка: "Method not found"
+
 **Решение**:
+
 - Проверьте имя метода (формат: `{service_name}.execute`)
 - Убедитесь, что файл сервиса заканчивается на `_service.py`
 - Перезапустите воркер для переобнаружения сервисов
 
 ### Ошибка подключения к RabbitMQ
+
 **Решение**:
+
 - Убедитесь, что RabbitMQ запущен
 - Проверьте настройки в `.env` или `rabbitmq_config.py`
 - Проверьте доступность порта 5672

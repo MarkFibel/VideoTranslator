@@ -7,13 +7,16 @@ VideoTranslator - это микросервисная система для об
 ## Архитектурные Слои
 
 ### 1. API Слой (HTTP)
+
 **Компоненты:**
+
 - FastAPI приложение (`src/app.py`)
 - HTTP роутеры (`src/routers/`)
 - Схемы валидации (`src/schemas/`)
 - Управление сессиями
 
 **Ответственность:**
+
 - Прием HTTP запросов от клиентов
 - Валидация входящих данных
 - Статическая раздача файлов
@@ -21,7 +24,9 @@ VideoTranslator - это микросервисная система для об
 - Возврат ответов клиенту
 
 ### 2. Транспортный Слой (RabbitMQ + JSON-RPC)
+
 **Компоненты:**
+
 - RPC Producer (`src/transport/rabbitmq/producer.py`)
 - RPC Consumer (`src/transport/rabbitmq/consumer.py`)
 - Connection Manager (`src/transport/rabbitmq/connection.py`)
@@ -29,6 +34,7 @@ VideoTranslator - это микросервисная система для об
 - Service Loader (`src/transport/json_rpc/service_loader.py`)
 
 **Ответственность:**
+
 - Управление соединениями с RabbitMQ
 - Отправка RPC запросов (Producer)
 - Прием RPC запросов (Consumer)
@@ -36,25 +42,31 @@ VideoTranslator - это микросервисная система для об
 - Возврат результатов выполнения
 
 ### 3. Сервисный Слой (Business Logic)
+
 **Компоненты:**
+
 - Base Service (`src/services/base_service.py`)
 - Test Service (`src/services/test_service.py`)
 - ML Service (`src/services/ml_service/`)
 
 **Ответственность:**
+
 - Выполнение бизнес-логики
 - Обработка данных
 - Работа с ML моделями
 - Автоматическая загрузка конфигурации
 
 ### 4. Конфигурационный Слой
+
 **Компоненты:**
+
 - App Config (`src/config/app_config.py`)
 - Logging Config (`src/config/logging_config.py`)
 - RabbitMQ Config (`src/config/rabbitmq_config.py`)
 - Service Configs (`src/config/services/`)
 
 **Ответственность:**
+
 - Управление настройками приложения
 - Загрузка переменных окружения
 - Конфигурация логирования
@@ -101,6 +113,7 @@ VideoTranslator - это микросервисная система для об
 ### 2. RPC Взаимодействие (Detailed)
 
 **Producer Side (API Server):**
+
 ```python
 # 1. Создание продюсера
 producer = RPCProducer()
@@ -123,6 +136,7 @@ result = await producer.call(
 ```
 
 **Consumer Side (Worker):**
+
 ```python
 # 1. Получение сообщения из очереди
 message = await queue.consume()
@@ -145,6 +159,7 @@ await channel.basic_publish(
 ## Паттерны Проектирования
 
 ### 1. Factory Pattern
+
 **Использование:** Создание FastAPI приложения
 
 ```python
@@ -157,6 +172,7 @@ def get_application() -> FastAPI:
 ```
 
 ### 2. Service Auto-Discovery Pattern
+
 **Использование:** Автоматическая регистрация сервисов
 
 ```python
@@ -168,6 +184,7 @@ class ServiceLoader:
 ```
 
 ### 3. Direct Reply-to Pattern (RabbitMQ)
+
 **Использование:** Эффективный RPC без временных очередей
 
 ```python
@@ -180,6 +197,7 @@ message.correlation_id = unique_id
 ```
 
 ### 4. Dependency Injection
+
 **Использование:** Внедрение зависимостей в роутеры
 
 ```python
@@ -192,6 +210,7 @@ async def upload_file(
 ```
 
 ### 5. Template Method Pattern
+
 **Использование:** BaseService определяет скелет
 
 ```python
@@ -208,7 +227,9 @@ class BaseService:
 ## Масштабирование
 
 ### Горизонтальное Масштабирование
+
 **Workers:**
+
 ```bash
 # Запустите несколько экземпляров воркеров
 python -m src.worker  # Terminal 1
@@ -219,6 +240,7 @@ python -m src.worker  # Terminal 3
 RabbitMQ автоматически распределит задачи между воркерами (round-robin).
 
 **API Servers:**
+
 ```bash
 # За load balancer (nginx/traefik)
 uvicorn src.app:app --port 8001
@@ -227,6 +249,7 @@ uvicorn src.app:app --port 8003
 ```
 
 ### Вертикальное Масштабирование
+
 - Увеличение ресурсов сервера (CPU, RAM)
 - Настройка количества uvicorn workers
 - Оптимизация размера пула соединений RabbitMQ
@@ -234,12 +257,14 @@ uvicorn src.app:app --port 8003
 ## Безопасность
 
 ### Текущие Меры
+
 - Валидация размера файлов (MAX_FILE_SIZE)
 - Структурированная обработка ошибок
 - Логирование всех операций
 - Изоляция сессий пользователей
 
 ### Планируемые Улучшения
+
 - JWT аутентификация
 - Rate limiting
 - CORS конфигурация
@@ -249,18 +274,22 @@ uvicorn src.app:app --port 8003
 ## Мониторинг и Логирование
 
 ### Система Логирования
+
 **Уровни:**
+
 - Console: DEBUG (разработка), INFO (продакшн)
 - File (app.log): INFO и выше
 - File (error.log): ERROR и выше
 
 **Ротация:**
+
 - Максимум 5 файлов
 - Размер файла: 10MB
 - Автоматическая ротация при превышении
 
 ### Структура Логов
-```
+
+```js
 2025-10-21 12:00:00,123 - src.worker - INFO - [worker.py:45] - Starting RabbitMQ Worker
 2025-10-21 12:00:01,456 - src.transport.rabbitmq.consumer - INFO - [consumer.py:67] - Received RPC request. Correlation ID: abc-123
 ```
@@ -268,12 +297,14 @@ uvicorn src.app:app --port 8003
 ## Обработка Ошибок
 
 ### Типы Ошибок
+
 1. **HTTP Errors** - HTTPException с статус кодами
 2. **RPC Errors** - ServiceExecutionError для ошибок сервисов
 3. **Validation Errors** - Pydantic ValidationError
 4. **Connection Errors** - RabbitMQ connection failures
 
 ### Стратегия Восстановления
+
 - **RabbitMQ:** Автоматическое переподключение
 - **RPC Timeout:** Настраиваемый timeout с fallback
 - **Session Cleanup:** Автоматическая очистка при ошибках
@@ -281,6 +312,7 @@ uvicorn src.app:app --port 8003
 ## Конфигурация Окружения
 
 ### Обязательные Переменные (.env)
+
 ```env
 # Application
 PROJECT_NAME=VideoTranslator
@@ -302,11 +334,13 @@ MAX_FILE_SIZE=10485760  # 10MB in bytes
 ## Тестирование
 
 ### Текущий Подход
+
 - Ручное тестирование через FastAPI Swagger UI
 - Скрипты `test_rabbitmq.py` и `test_rpc.py`
 - Проверка логов для диагностики
 
 ### Планируемое
+
 - Unit тесты (pytest)
 - Integration тесты (RabbitMQ + Services)
 - E2E тесты (API → Worker → Response)
@@ -314,7 +348,7 @@ MAX_FILE_SIZE=10485760  # 10MB in bytes
 
 ## Диаграмма Компонентов
 
-```
+```js
 ┌─────────────────────────────────────────────────────────────┐
 │                     Client (Browser/API)                    │
 └────────────────────────┬────────────────────────────────────┘
@@ -322,9 +356,9 @@ MAX_FILE_SIZE=10485760  # 10MB in bytes
                          ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                    FastAPI Application                      │
-│  ┌────────────┐  ┌─────────────┐  ┌──────────────────┐     │
-│  │  Routers   │  │  Schemas    │  │  Session Store   │     │
-│  └────────────┘  └─────────────┘  └──────────────────┘     │
+│  ┌────────────┐  ┌─────────────┐  ┌──────────────────┐      │
+│  │  Routers   │  │  Schemas    │  │  Session Store   │      │
+│  └────────────┘  └─────────────┘  └──────────────────┘      │
 └────────────────────────┬────────────────────────────────────┘
                          │ RPC Call
                          ▼
@@ -352,10 +386,10 @@ MAX_FILE_SIZE=10485760  # 10MB in bytes
 │  └──────────────────────┬───────────────────────────┘       │
 │                         │ Route to Service                  │
 │                         ▼                                   │
-│  ┌─────────────┐  ┌──────────────┐  ┌─────────────┐       │
-│  │ TestService │  │  ML Service  │  │   Future    │       │
-│  │  .execute() │  │  .execute()  │  │  Services   │       │
-│  └─────────────┘  └──────────────┘  └─────────────┘       │
+│  ┌─────────────┐  ┌──────────────┐  ┌─────────────┐         │
+│  │ TestService │  │  ML Service  │  │   Future    │         │
+│  │  .execute() │  │  .execute()  │  │  Services   │         │
+│  └─────────────┘  └──────────────┘  └─────────────┘         │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -364,6 +398,7 @@ MAX_FILE_SIZE=10485760  # 10MB in bytes
 ### Добавление Нового Сервиса
 
 1. **Создать файл сервиса:**
+
 ```python
 # src/services/video_processing_service.py
 from .base_service import BaseService
@@ -375,12 +410,14 @@ class VideoProcessingService(BaseService):
 ```
 
 2. **Конфигурация создастся автоматически:**
+
 ```python
 # src/config/services/video_processing_config.py (auto-created)
 RPC_ENABLED = False  # Установите True для активации
 ```
 
 3. **Активировать сервис:**
+
 ```python
 # src/config/services/video_processing_config.py
 RPC_ENABLED = True
@@ -391,6 +428,7 @@ RPC_ENABLED = True
 ### Добавление Нового Endpoint
 
 1. **Создать роутер:**
+
 ```python
 # src/routers/new_router.py
 from fastapi import APIRouter
@@ -403,6 +441,7 @@ async def test_endpoint():
 ```
 
 2. **Зарегистрировать роутер:**
+
 ```python
 # src/routes.py
 from src.routers import new_router
@@ -416,6 +455,7 @@ def get_apps_router() -> APIRouter:
 ## Заключение
 
 Архитектура VideoTranslator построена на принципах:
+
 - **Модульность** - легко добавлять новые компоненты
 - **Масштабируемость** - горизонтальное масштабирование воркеров
 - **Асинхронность** - эффективная работа с I/O
