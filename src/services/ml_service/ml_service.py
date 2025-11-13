@@ -2,6 +2,7 @@
 Сервис перевода видео.
 """
 import os
+import asyncio
 import shutil
 import logging
 from src.services.base_service import BaseService
@@ -101,11 +102,150 @@ class MLService(BaseService):
         Args:
             temp_dir (str): Путь к временной директории для хранения промежуточных данных.
         """
+        super().__init__()
         self.translate = get_translate()
         self.spech_recognize = get_spech_recognize()
         self.ocr = get_ocr()
         self.tts = get_tts()
         self.temp_dir = temp_dir
+
+    async def execute_stream(self, data: dict):
+        """
+        Асинхронный метод для запуска пайплайна с SSE (streaming).
+        """
+        self._start_tracking()
+
+        try:
+            path = data.get("path", "")
+            name = data.get("name", "")
+            result_dir = data.get("res_dir", "var/results")
+
+            if not path or not name:
+                yield self.create_error_message(
+                    error_code="INVALID_INPUT",
+                    error_message="Path or name missing"
+                )
+                return
+
+            # Копируем видео во временную директорию
+            self.next_stage()  # copying_file
+            yield self.get_current_stage_message()
+
+            copy_file_to_directory(path, self.temp_dir)
+            path = os.path.join(self.temp_dir, os.path.basename(path))
+
+            # Основная обработка видео (streaming)
+            async for msg in self.__process_video_stream(path, name, result_dir):
+                yield msg
+
+            # Финальное сообщение об успехе
+            yield self.create_success_message(
+                result={"output_path": os.path.join(result_dir, f"{name}_translated.mp4")}
+            )
+
+        except Exception as e:
+            logging.exception("Ошибка в execute_stream:")
+            yield self.create_error_message(
+                error_code="ML_PROCESSING_FAILED",
+                error_message=str(e),
+                stage_failed=self._current_stage_id or "unknown"
+            )
+
+    async def __process_video_stream(self, path: str, name: str, result_dir: str):
+        """
+        Асинхронная версия пайплайна обработки видео с отправкой прогресса через SSE.
+        """
+        # --- ЭТАП 2: Разбиение видео на кадры ---
+        self.next_stage()  # splitting_frames
+        yield self.get_current_stage_message()
+
+        src_frames_dir = os.path.join(self.temp_dir, f'{name}_src_frames')
+        r = split_video_to_frames(path, src_frames_dir)
+        if not r['status']:
+            raise Exception(r['error'])
+        logging.info(f"✅ Обработано кадров: {r['procced_frames']}")
+        await asyncio.sleep(0)  # чтобы не блокировать event loop
+
+        # --- ЭТАП 3: Извлечение аудио ---
+        self.next_stage()  # extracting_audio
+        yield self.get_current_stage_message()
+
+        src_audio_dir = os.path.join(self.temp_dir, f'{name}.mp3')
+        r = extract_audio_from_video(path, src_audio_dir)
+        if not r['status']:
+            raise Exception(r['error'])
+        logging.info("✅ Аудио успешно извлечено")
+        await asyncio.sleep(0)
+
+        # --- ЭТАП 4: Распознавание речи ---
+        self.next_stage()  # recognizing_speech
+        yield self.get_current_stage_message()
+
+        r = self.spech_recognize(src_audio_dir)
+        if not r['status']:
+            raise Exception(r['error'])
+        text_from_audio = r['text']
+        logging.info("✅ Распознавание речи завершено")
+        await asyncio.sleep(0)
+
+        # --- ЭТАП 5: Перевод текста ---
+        self.next_stage()  # translating_text
+        yield self.get_current_stage_message()
+
+        r = self.translate(text_from_audio)
+        if not r['status']:
+            raise Exception(r['error'])
+        translated_text = r['text']
+        logging.info("✅ Перевод завершён")
+        await asyncio.sleep(0)
+
+        # --- ЭТАП 6: Генерация TTS ---
+        self.next_stage()  # generating_tts
+        yield self.get_current_stage_message()
+
+        translated_audio_dir = f'{name}_translated'
+        r = self.tts(translated_text, translated_audio_dir)
+        if not r['status']:
+            raise Exception(r['error'])
+        logging.info("✅ Синтез речи завершён")
+        await asyncio.sleep(0)
+
+        # --- ЭТАП 7: Обработка кадров ---
+        self.next_stage()  # processing_frames
+        yield self.get_current_stage_message()
+
+        translated_frames_dir = os.path.join(self.temp_dir, f'{name}_translated_frames')
+        r = tr_frames(src_frames_dir, res_dir=translated_frames_dir)
+        if not r['status']:
+            raise Exception(r['error'])
+        logging.info("✅ Обработка кадров завершена")
+        await asyncio.sleep(0)
+
+        # --- ЭТАП 8: Сборка видео ---
+        self.next_stage()  # assembling_video
+        yield self.get_current_stage_message()
+
+        file_name = os.path.basename(path)
+        r = rename_file(self.temp_dir, file_name, f'temp_{file_name}')
+        if not r['status']:
+            raise Exception(r['error'])
+
+        r = images_to_video_with_audio_auto_fps(
+            translated_frames_dir,
+            os.path.join(self.temp_dir, f'{name}_translated.wav'),
+            os.path.join(self.temp_dir, file_name),
+            path.replace(file_name, f'temp_{file_name}')
+        )
+        if not r['status']:
+            raise Exception(r['error'])
+
+        logging.info("✅ Видео успешно собрано")
+
+        # Очистка временных файлов
+        clean_directory(self.temp_dir, [file_name, f'temp_{file_name}'])
+        logging.info("🧹 Очистка завершена")
+
+        await asyncio.sleep(0)
 
     def execute(self, data: dict) -> dict:
         """
@@ -252,3 +392,10 @@ class MLService(BaseService):
         logging.info("🧹 Временные файлы удалены")
 
         return {'status': True}
+
+    async def execute_stream(self, data: dict):
+        self._start_tracking()
+        
+        self.next_stage()
+        
+        
