@@ -1,4 +1,5 @@
 // static/js/controllers/hello_controller.js
+// VERSION: 2025-11-13T17:52:00Z - SSE Error Fix Applied
 const { Controller } = Stimulus;
 import { preparePayload, validateFormData } from '../helpers/formDataPreparer.js';
 
@@ -15,6 +16,8 @@ import { preparePayload, validateFormData } from '../helpers/formDataPreparer.js
 export default class extends Controller {
     static targets = [
         "submitButton",
+        "downloadButton",
+        "resetButton",
         "form",
         "formContainer",
         "spinnerContainer",
@@ -60,6 +63,12 @@ export default class extends Controller {
         this.element.addEventListener('api:network-error', this.onNetworkError.bind(this));
         this.element.addEventListener('api:progress', this.onApiProgress.bind(this));
 
+        // Слушаем SSE события
+        this.element.addEventListener('api:sse-start', this.onSSEStart.bind(this));
+        this.element.addEventListener('api:sse-progress', this.onSSEProgress.bind(this));
+        this.element.addEventListener('api:sse-complete', this.onSSEComplete.bind(this));
+        this.element.addEventListener('api:sse-error', this.onSSEError.bind(this));
+
         // Слушаем события от captchaController
         this.element.addEventListener('captcha:success', this.onCaptchaSuccess.bind(this));
         this.element.addEventListener('captcha:error', this.onCaptchaError.bind(this));
@@ -92,6 +101,10 @@ export default class extends Controller {
         this.element.removeEventListener('api:error', this.onApiError.bind(this));
         this.element.removeEventListener('api:network-error', this.onNetworkError.bind(this));
         this.element.removeEventListener('api:progress', this.onApiProgress.bind(this));
+        this.element.removeEventListener('api:sse-start', this.onSSEStart.bind(this));
+        this.element.removeEventListener('api:sse-progress', this.onSSEProgress.bind(this));
+        this.element.removeEventListener('api:sse-complete', this.onSSEComplete.bind(this));
+        this.element.removeEventListener('api:sse-error', this.onSSEError.bind(this));
         this.element.removeEventListener('captcha:success', this.onCaptchaSuccess.bind(this));
         this.element.removeEventListener('captcha:error', this.onCaptchaError.bind(this));
         this.element.removeEventListener('captcha:expired', this.onCaptchaExpired.bind(this));
@@ -177,6 +190,7 @@ export default class extends Controller {
     registerControllersToWatch() {
         // Находим все контроллеры, которые требуют ожидания инициализации
         const asyncControllers = [
+            'file',       // КРИТИЧЕСКИ ВАЖНО: Должен быть готов для восстановления файла из сессии
             'captcha',    // Загружает внешний скрипт Yandex SmartCaptcha
             'mask',       // Динамически импортирует Inputmask
             'validation', // Должен быть готов для валидации
@@ -246,6 +260,10 @@ export default class extends Controller {
 
         // Скрываем спиннер и показываем форму
         this.showForm();
+
+        // ВАЖНО: Восстанавливаем состояние из сессии ПОСЛЕ инициализации всех контроллеров
+        // Это гарантирует что fileController и другие контроллеры готовы
+        this.restoreSessionState();
 
         // Диспатчим событие завершения инициализации
         const event = new CustomEvent('form:initialized', {
@@ -343,8 +361,25 @@ export default class extends Controller {
      * @param {boolean} allowRetry - Показывать ли кнопку повтора
      */
     showError(message, allowRetry = false) {
+        const timestamp = new Date().toISOString();
+        console.log(`[${timestamp}] ❌ FormController.showError: "${message}", allowRetry=${allowRetry}`);
+        
         this.hideAllStates();
 
+        // Также показываем ошибку через fileController, если он доступен
+        const fileElement = this.element.querySelector('[data-controller*="file"]');
+        if (fileElement) {
+            const fileController = this.application.getControllerForElementAndIdentifier(
+                fileElement,
+                'file'
+            );
+            
+            if (fileController && typeof fileController.showError === 'function') {
+                fileController.showError(message);
+            }
+        }
+
+        // Показываем через свои targets (если они есть - для старой структуры)
         if (this.hasErrorContainerTarget) {
             this.errorContainerTarget.classList.remove('form-state-hidden');
             this.errorContainerTarget.classList.add('form-state-visible');
@@ -387,6 +422,17 @@ export default class extends Controller {
     restoreForm() {
         // Показываем форму
         this.showForm();
+
+        // Показываем кнопку отправки и скрываем кнопку скачивания
+        if (this.hasSubmitButtonTarget) {
+            this.submitButtonTarget.classList.remove('d-none');
+        }
+        if (this.hasDownloadButtonTarget) {
+            this.downloadButtonTarget.classList.add('d-none');
+        }
+        if (this.hasResetButtonTarget) {
+            this.resetButtonTarget.classList.add('d-none');
+        }
 
         // Разблокируем кнопку отправки
         this.enableSubmitButton();
@@ -446,10 +492,14 @@ export default class extends Controller {
      * @param {CustomEvent} event
      */
     onApiSuccess(event) {
-        const { message } = event.detail;
+        const { message, result } = event.detail;
 
         // Скрываем спиннер и показываем сообщение об успехе
         this.showSuccess(message || 'Форма успешно отправлена');
+        
+        // Скрываем кнопку отправки и показываем кнопку скачивания
+        this.hideSubmitButton();
+        this.showDownloadButton(result);
     }
 
     /**
@@ -458,15 +508,31 @@ export default class extends Controller {
      */
     onApiError(event) {
         const timestamp = new Date().toISOString();
-        const { message, errors, repeat, captcha_retry } = event.detail;
+        const detail = event.detail || {};
+        
+        // Поддерживаем разные форматы: 
+        // 1. Старый формат: { message, errors, repeat, captcha_retry }
+        // 2. Новый SSE формат: { code, detail, stage_failed }
+        const message = detail.message || detail.detail || 'Произошла ошибка при обработке запроса';
+        const errors = detail.errors;
+        const repeat = detail.repeat;
+        const captcha_retry = detail.captcha_retry;
 
         console.warn(`[${timestamp}] ❌ FormController.onApiError - ошибка от сервера`, {
             message,
+            code: detail.code,
             hasErrors: !!errors && Object.keys(errors).length > 0,
             errorCount: errors ? Object.keys(errors).length : 0,
             repeat,
-            captcha_retry
+            captcha_retry,
+            stage_failed: detail.stage_failed
         });
+
+        // КРИТИЧЕСКИ ВАЖНО: Останавливаем прогресс-бар при любой ошибке
+        this.stopProgressBar();
+        
+        // Разблокируем кнопку отправки
+        this.enableSubmitButton();
 
         // Если ошибка связана с капчей и требуется повторная попытка
         if (captcha_retry) {
@@ -477,7 +543,6 @@ export default class extends Controller {
         // и восстанавливаем форму, чтобы пользователь мог исправить
         if (errors && Object.keys(errors).length > 0) {
             this.showForm();
-            this.enableSubmitButton();
             this.dispatchValidationError(errors);
             return;
         }
@@ -485,10 +550,7 @@ export default class extends Controller {
         // Иначе показываем общее сообщение об ошибке
         // repeat определяет, показывать ли кнопку "Повторить запрос"
         const allowRetry = repeat === true;
-        this.showError(
-            message || 'Произошла ошибка при обработке запроса',
-            allowRetry
-        );
+        this.showError(message, allowRetry);
     }
 
     /**
@@ -500,6 +562,12 @@ export default class extends Controller {
         const { message } = event.detail;
 
         console.error(`[${timestamp}] 🌐❌ FormController.onNetworkError - сетевая ошибка`, { message });
+
+        // КРИТИЧЕСКИ ВАЖНО: Останавливаем прогресс-бар при сетевой ошибке
+        this.stopProgressBar();
+        
+        // Разблокируем кнопку отправки
+        this.enableSubmitButton();
 
         // Сетевые ошибки всегда можно повторить
         this.showError(
@@ -620,6 +688,114 @@ export default class extends Controller {
     }
 
     /**
+     * Обработчик начала SSE загрузки
+     * @param {CustomEvent} event
+     */
+    onSSEStart(event) {
+        console.log('SSE upload started');
+        this.showSpinner('Загрузка файла...');
+        
+        // Блокируем кнопку удаления файла
+        this.disableFileRemoveButton();
+    }
+
+    /**
+     * Обработчик SSE прогресса
+     * @param {CustomEvent} event
+     */
+    onSSEProgress(event) {
+        const { progress, stage } = event.detail;
+        console.log(`SSE Progress: ${progress}% at stage ${stage}`);
+
+        // Находим fileController элемент и диспатчим событие на него
+        const uploadZone = document.querySelector('[data-controller*="file"]');
+        if (uploadZone) {
+            const progressEvent = new CustomEvent('progress:update', {
+                bubbles: true,
+                cancelable: false,
+                detail: event.detail
+            });
+            uploadZone.dispatchEvent(progressEvent);
+            console.log('[FormController] Dispatched progress:update to uploadZone');
+        } else {
+            console.warn('[FormController] Upload zone not found!');
+        }
+    }
+
+    /**
+     * Обработчик завершения SSE
+     * @param {CustomEvent} event
+     */
+    onSSEComplete(event) {
+        console.log('SSE upload complete', event.detail);
+        
+        // Сначала обновляем прогресс до 100% и стадию на "complete"
+        const uploadZone = document.querySelector('[data-controller*="file"]');
+        if (uploadZone) {
+            const progressEvent = new CustomEvent('progress:update', {
+                bubbles: true,
+                cancelable: false,
+                detail: {
+                    progress: 100,
+                    stage: 'complete',
+                    ...event.detail
+                }
+            });
+            uploadZone.dispatchEvent(progressEvent);
+            console.log('[FormController] Dispatched final progress:update (100%, complete)');
+        }
+        
+        // Разблокируем кнопку удаления файла
+        this.enableFileRemoveButton();
+        
+        // Переиспользуем существующую логику успеха
+        // Трансформируем SSE событие в формат api:success
+        const successEvent = new CustomEvent('api:success', {
+            bubbles: true,
+            detail: {
+                code: 'success',
+                detail: 'Файл успешно обработан.',
+                ...event.detail
+            }
+        });
+        
+        this.onApiSuccess(successEvent);
+    }
+
+    /**
+     * Обработчик ошибки SSE
+     * @param {CustomEvent} event
+     */
+    onSSEError(event) {
+        const timestamp = new Date().toISOString();
+        console.error(`[${timestamp}] ❌ FormController.onSSEError - SSE upload error`, event.detail);
+        
+        // Разблокируем кнопку удаления файла
+        this.enableFileRemoveButton();
+        
+        // Структура event.detail: { progress: -1, stage: 'error', status: 'error', error: {...}, timestamp: '...' }
+        // Извлекаем вложенный объект error
+        const errorData = event.detail.error || {};
+        
+        console.log(`[${timestamp}] 📦 Extracted error data:`, errorData);
+        
+        // Переиспользуем существующую логику ошибок
+        // Трансформируем SSE событие в формат api:error
+        const errorEvent = new CustomEvent('api:error', {
+            bubbles: true,
+            detail: {
+                code: errorData.code || 'sse_error',
+                message: errorData.message || errorData.details || 'Ошибка обработки файла',
+                stage_failed: errorData.stage_failed,
+                repeat: true // Разрешаем повторную попытку при SSE ошибках
+            }
+        });
+        
+        console.log(`[${timestamp}] 🔄 Calling onApiError with:`, errorEvent.detail);
+        this.onApiError(errorEvent);
+    }
+
+    /**
      * Отправляет событие form:validation-error
      * @param {Object} errors - Ошибки валидации
      */
@@ -642,6 +818,34 @@ export default class extends Controller {
             cancelable: false
         });
         this.element.dispatchEvent(event);
+    }
+
+    /**
+     * Блокирует кнопку удаления файла
+     */
+    disableFileRemoveButton() {
+        const removeButton = document.querySelector('.file-remove-btn');
+        if (removeButton) {
+            removeButton.disabled = true;
+            removeButton.style.opacity = '0.5';
+            removeButton.style.cursor = 'not-allowed';
+            removeButton.style.pointerEvents = 'none';
+            console.log('[FormController] File remove button disabled');
+        }
+    }
+
+    /**
+     * Разблокирует кнопку удаления файла
+     */
+    enableFileRemoveButton() {
+        const removeButton = document.querySelector('.file-remove-btn');
+        if (removeButton) {
+            removeButton.disabled = false;
+            removeButton.style.opacity = '1';
+            removeButton.style.cursor = 'pointer';
+            removeButton.style.pointerEvents = 'auto';
+            console.log('[FormController] File remove button enabled');
+        }
     }
 
     // ==========================================
@@ -680,6 +884,12 @@ export default class extends Controller {
      * Разблокирует кнопку отправки
      */
     enableSubmitButton() {
+        const timestamp = new Date().toISOString();
+        console.log(`[${timestamp}] 🔓 FormController.enableSubmitButton вызван`, {
+            hasTarget: this.hasSubmitButtonTarget,
+            button: this.hasSubmitButtonTarget ? this.submitButtonTarget : null
+        });
+        
         if (this.hasSubmitButtonTarget) {
             this.submitButtonTarget.disabled = false;
             this.submitButtonTarget.classList.remove('loading');
@@ -687,6 +897,13 @@ export default class extends Controller {
             // Показываем текст кнопки и скрываем спиннер
             const buttonText = this.submitButtonTarget.querySelector('.button-text');
             const buttonSpinner = this.submitButtonTarget.querySelector('.button-spinner');
+
+            console.log(`[${timestamp}] 🔍 Найденные элементы:`, {
+                buttonText: !!buttonText,
+                buttonSpinner: !!buttonSpinner,
+                buttonTextHasHidden: buttonText?.classList.contains('d-none'),
+                buttonSpinnerHasHidden: buttonSpinner?.classList.contains('d-none')
+            });
 
             if (buttonText) {
                 buttonText.classList.remove('d-none');
@@ -701,6 +918,58 @@ export default class extends Controller {
             if (spinner) {
                 spinner.classList.add('d-none');
             }
+            
+            console.log(`[${timestamp}] ✅ Кнопка отправки разблокирована`, {
+                disabled: this.submitButtonTarget.disabled,
+                hasLoadingClass: this.submitButtonTarget.classList.contains('loading')
+            });
+        } else {
+            console.error(`[${timestamp}] ❌ submitButtonTarget не найден!`);
+        }
+    }
+
+    /**
+     * Скрывает кнопку отправки
+     */
+    hideSubmitButton() {
+        if (this.hasSubmitButtonTarget) {
+            this.submitButtonTarget.classList.add('d-none');
+        }
+    }
+
+    /**
+     * Показывает кнопку скачивания с URL для загрузки
+     * @param {Object} result - Результат обработки с сервера
+     */
+    showDownloadButton(result) {
+        if (this.hasDownloadButtonTarget) {
+            // Показываем кнопку
+            this.downloadButtonTarget.classList.remove('d-none');
+            
+            // Устанавливаем обработчик клика - файл скачивается через сессию
+            // Endpoint: GET /files/download/ (без параметров, использует сессию)
+            this.downloadButtonTarget.onclick = () => {
+                window.location.href = '/files/download/';
+            };
+        }
+        
+        // Также показываем кнопку "Загрузить ещё"
+        if (this.hasResetButtonTarget) {
+            this.resetButtonTarget.classList.remove('d-none');
+        }
+    }
+    
+    /**
+     * Скрывает кнопку скачивания
+     */
+    hideDownloadButton() {
+        if (this.hasDownloadButtonTarget) {
+            this.downloadButtonTarget.classList.add('d-none');
+        }
+        
+        // Также скрываем кнопку "Загрузить ещё"
+        if (this.hasResetButtonTarget) {
+            this.resetButtonTarget.classList.add('d-none');
         }
     }
 
@@ -722,6 +991,14 @@ export default class extends Controller {
      */
     get hasSubmitButtonTarget() {
         return this.targets.has('submitButton');
+    }
+
+    /**
+     * Проверяет наличие target'а кнопки скачивания
+     * @returns {boolean}
+     */
+    get hasDownloadButtonTarget() {
+        return this.targets.has('downloadButton');
     }
 
     // ==========================================
@@ -808,5 +1085,207 @@ export default class extends Controller {
 
         // Можно показать предупреждение пользователю
         // что нужно пройти капчу заново
+    }
+
+    // ==========================================
+    // === Восстановление состояния сессии ===
+    // ==========================================
+
+    /**
+     * Восстанавливает состояние формы из сессии
+     * Вызывается при загрузке страницы
+     */
+    async restoreSessionState() {
+        const timestamp = new Date().toISOString();
+        console.log(`[${timestamp}] 🔄 FormController.restoreSessionState - начало восстановления`);
+
+        try {
+            // Запрашиваем статус сессии
+            const response = await fetch('/files/session/status', {
+                method: 'GET',
+                credentials: 'same-origin'
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            const sessionData = await response.json();
+            console.log(`[${timestamp}] 📦 Session data:`, sessionData);
+
+            // Если файл готов к скачиванию
+            if (sessionData.need_download && sessionData.file) {
+                console.log(`[${timestamp}] ✅ Файл готов к скачиванию`);
+                
+                // Скрываем спиннер и показываем форму
+                this.hideSpinner();
+                this.showForm();
+
+                // Восстанавливаем информацию о файле через fileController
+                this.restoreFileInfo(sessionData.file);
+
+                // Показываем кнопку скачивания вместо кнопки отправки
+                this.hideSubmitButton();
+                this.showDownloadButton();
+
+                return;
+            }
+
+            // Если обработка еще идет
+            if (sessionData.pending) {
+                console.log(`[${timestamp}] ⏳ Обработка в процессе`);
+                this.showSpinner('Обработка файла...');
+                return;
+            }
+
+            // Обычное состояние - форма готова к новой загрузке
+            console.log(`[${timestamp}] 📝 Форма готова к использованию`);
+            this.hideSpinner();
+            this.showForm();
+
+        } catch (error) {
+            console.error(`[${timestamp}] ❌ Ошибка восстановления сессии:`, error);
+            // В случае ошибки показываем обычную форму
+            this.hideSpinner();
+            this.showForm();
+        }
+    }
+
+    /**
+     * Восстанавливает информацию о файле в fileController
+     * @param {Object} fileData - Данные файла из сессии
+     */
+    restoreFileInfo(fileData) {
+        const timestamp = new Date().toISOString();
+        console.log(`[${timestamp}] 📎 FormController.restoreFileInfo`, fileData);
+
+        // Находим fileController
+        const fileElement = this.element.querySelector('[data-controller*="file"]');
+        if (!fileElement) {
+            console.warn(`[${timestamp}] ⚠️  fileController не найден`);
+            return;
+        }
+
+        const fileController = this.application.getControllerForElementAndIdentifier(
+            fileElement,
+            'file'
+        );
+
+        if (!fileController) {
+            console.warn(`[${timestamp}] ⚠️  fileController instance не найден`);
+            return;
+        }
+
+        // Вызываем метод восстановления в fileController
+        if (typeof fileController.restoreFromSession === 'function') {
+            fileController.restoreFromSession(fileData);
+        } else {
+            console.warn(`[${timestamp}] ⚠️  fileController.restoreFromSession не существует`);
+        }
+    }
+
+    // ==========================================
+    // === Сброс сессии ===
+    // ==========================================
+
+    /**
+     * Сбрасывает сессию и подготавливает форму для новой загрузки
+     */
+    async resetSession() {
+        const timestamp = new Date().toISOString();
+        console.log(`[${timestamp}] 🔄 FormController.resetSession - сброс сессии`);
+
+        try {
+            // Отправляем запрос на сброс сессии на сервер
+            const response = await fetch('/files/session/reset', {
+                method: 'POST',
+                credentials: 'same-origin'
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            console.log(`[${timestamp}] ✅ Сессия успешно сброшена на сервере`);
+
+            // Очищаем форму локально
+            this.clearFormAndResetUI();
+
+        } catch (error) {
+            console.error(`[${timestamp}] ❌ Ошибка сброса сессии:`, error);
+            
+            // Даже если запрос на сервер не прошёл, очищаем форму локально
+            this.clearFormAndResetUI();
+        }
+    }
+
+    /**
+     * Очищает форму и сбрасывает UI в начальное состояние
+     */
+    clearFormAndResetUI() {
+        const timestamp = new Date().toISOString();
+        console.log(`[${timestamp}] 🧹 FormController.clearFormAndResetUI`);
+
+        // Находим fileController для очистки файла
+        const fileElement = this.element.querySelector('[data-controller*="file"]');
+        if (fileElement) {
+            const fileController = this.application.getControllerForElementAndIdentifier(
+                fileElement,
+                'file'
+            );
+
+            if (fileController && typeof fileController.clearFile === 'function') {
+                fileController.clearFile();
+            }
+        }
+
+        // Скрываем кнопки скачивания и reset
+        this.hideDownloadButton();
+
+        // Показываем кнопку отправки
+        if (this.hasSubmitButtonTarget) {
+            this.submitButtonTarget.classList.remove('d-none');
+        }
+
+        // Показываем форму
+        this.showForm();
+
+        // Разблокируем кнопку отправки
+        this.enableSubmitButton();
+
+        console.log(`[${timestamp}] ✅ Форма очищена и готова к новой загрузке`);
+    }
+    
+    /**
+     * Останавливает и скрывает прогресс-бар при ошибке
+     */
+    stopProgressBar() {
+        const timestamp = new Date().toISOString();
+        console.log(`[${timestamp}] 🛑 FormController.stopProgressBar - останавливаем прогресс`);
+        
+        // Отправляем событие для fileController, чтобы скрыть прогресс
+        const progressEvent = new CustomEvent('progress:update', {
+            bubbles: true,
+            detail: {
+                progress: 0,
+                stage: 'idle',
+                status: 'idle'
+            }
+        });
+        
+        this.element.dispatchEvent(progressEvent);
+        
+        // Также напрямую скрываем прогресс если есть доступ к fileController
+        const fileElement = this.element.querySelector('[data-controller*="file"]');
+        if (fileElement) {
+            const fileController = this.application.getControllerForElementAndIdentifier(
+                fileElement,
+                'file'
+            );
+            
+            if (fileController && typeof fileController.hideProgress === 'function') {
+                fileController.hideProgress();
+            }
+        }
     }
 }

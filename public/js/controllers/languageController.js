@@ -25,7 +25,10 @@ export default class extends Controller {
             'upload-title': 'ЗАГРУЗИТЕ ВАШЕ ВИДЕО',
             'upload-subtitle': 'Выберите видеофайл для начала обработки',
             'upload-button': 'ЗАГРУЗИТЬ ВИДЕО',
+            'download-btn': 'СКАЧАТЬ ВИДЕО',
             'submit-btn': 'ОТПРАВИТЬ ВИДЕО',
+            'reset-btn': 'ЗАГРУЗИТЬ ЕЩЁ',
+            'uploading': 'ЗАГРУЗКА...',
             'how-it-works': 'Как работает VideoProcessor',
             'step1-number': '1. Загрузите видео',
             'step1-desc': 'Выберите и загрузите видеофайл на наш защищённый сервер',
@@ -33,7 +36,27 @@ export default class extends Controller {
             'step2-desc': 'Наш продвинутый ИИ анализирует и улучшает ваше видео',
             'step3-number': '3. Скачайте результат',
             'step3-desc': 'Получите обработанное видео с улучшенным качеством',
-            'version': 'Продвинутая система обработки видео версия 1.0.0'
+            'version': 'Продвинутая система обработки видео версия 1.0.0',
+            
+            // SSE этапы обработки
+            'stage-initializing': 'Инициализация',
+            'stage-file_saved': 'Файл сохранен',
+            'stage-copying_file': 'Копирование файла',
+            'stage-splitting_frames': 'Разбиение на кадры',
+            'stage-extracting_audio': 'Извлечение аудио',
+            'stage-recognizing_speech': 'Распознавание речи',
+            'stage-translating_text': 'Перевод текста',
+            'stage-generating_tts': 'Генерация озвучки',
+            'stage-processing_frames': 'Обработка видеокадров',
+            'stage-assembling_video': 'Сборка финального видео',
+            'stage-complete': 'Обработка завершена',
+            
+            // SSE статусы
+            'sse-connecting': 'Подключение...',
+            'sse-uploading': 'Загрузка файла...',
+            'sse-processing': 'Обработка...',
+            'sse-completed': 'Готово!',
+            'sse-error': 'Ошибка обработки'
         },
         en: {
             'title': 'VIDEO PROCESSOR',
@@ -42,6 +65,9 @@ export default class extends Controller {
             'upload-subtitle': 'Select a video file to start processing',
             'upload-button': 'UPLOAD VIDEO',
             'submit-btn': 'SUBMIT VIDEO',
+            'download-btn': 'DOWNLOAD VIDEO',
+            'reset-btn': 'UPLOAD MORE',
+            'uploading': 'UPLOADING...',
             'how-it-works': 'How VideoProcessor Works',
             'step1-number': '1. Upload Video',
             'step1-desc': 'Select and upload a video file to our secure server',
@@ -49,7 +75,27 @@ export default class extends Controller {
             'step2-desc': 'Our advanced AI analyzes and enhances your video',
             'step3-number': '3. Download Result',
             'step3-desc': 'Get your processed video with improved quality',
-            'version': 'Advanced video processing system version 1.0.0'
+            'version': 'Advanced video processing system version 1.0.0',
+            
+            // SSE processing stages
+            'stage-initializing': 'Initializing',
+            'stage-file_saved': 'File saved',
+            'stage-copying_file': 'Copying file',
+            'stage-splitting_frames': 'Splitting frames',
+            'stage-extracting_audio': 'Extracting audio',
+            'stage-recognizing_speech': 'Recognizing speech',
+            'stage-translating_text': 'Translating text',
+            'stage-generating_tts': 'Generating TTS',
+            'stage-processing_frames': 'Processing video frames',
+            'stage-assembling_video': 'Assembling final video',
+            'stage-complete': 'Processing complete',
+            
+            // SSE statuses
+            'sse-connecting': 'Connecting...',
+            'sse-uploading': 'Uploading file...',
+            'sse-processing': 'Processing...',
+            'sse-completed': 'Done!',
+            'sse-error': 'Processing error'
         }
     };
 

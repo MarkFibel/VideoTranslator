@@ -6,10 +6,12 @@
  * События:
  * - Слушает: form:submit
  * - Генерирует: api:submit, api:success, api:error, api:network-error
+ *               api:sse-start, api:sse-progress, api:sse-complete, api:sse-error
  */
 
 // static/js/controllers/hello_controller.js
 const { Controller } = Stimulus;
+import SSEHelper from '../helpers/sseHelper.js';
 
 export default class extends Controller {
     static values = {
@@ -83,6 +85,14 @@ export default class extends Controller {
             return;
         }
 
+        // Проверяем, нужно ли использовать SSE
+        const useSSE = this.shouldUseSSE(targetEndpoint, file);
+
+        if (useSSE) {
+            console.log(`[${timestamp}] 📡 ApiController [${requestId}] Используем SSE для загрузки`);
+            return this.submitWithSSE(targetEndpoint, payload, file, token, requestId, timestamp);
+        }
+
         // Если есть файл - используем XMLHttpRequest с прогрессом
         if (file) {
             console.log(`[${timestamp}] 📤 ApiController [${requestId}] Обнаружен файл, используем XMLHttpRequest`);
@@ -92,6 +102,18 @@ export default class extends Controller {
         // Иначе используем обычный fetch для JSON
         console.log(`[${timestamp}] 📤 ApiController [${requestId}] Отправка JSON данных`);
         return this.submitWithoutFile(targetEndpoint, payload, token, requestId, timestamp);
+    }
+
+    /**
+     * Определяет, нужно ли использовать SSE для данного запроса
+     * 
+     * @param {string} endpoint - URL endpoint
+     * @param {File} file - Файл для загрузки
+     * @returns {boolean}
+     */
+    shouldUseSSE(endpoint, file) {
+        // SSE используется для endpoints с /stream и при наличии файла
+        return file && endpoint && endpoint.includes('/stream');
     }
 
     /**
@@ -525,6 +547,127 @@ export default class extends Controller {
                 error: this.getNetworkErrorMessage(error)
             };
         }
+    }
+
+    /**
+     * Отправка данных с файлом через SSE
+     * 
+     * @param {string} targetEndpoint - URL для отправки
+     * @param {Object} payload - Данные формы
+     * @param {File} file - Файл для загрузки
+     * @param {string} token - CSRF токен
+     * @param {string} requestId - ID запроса
+     * @param {string} timestamp - Временная метка
+     */
+    async submitWithSSE(targetEndpoint, payload, file, token, requestId, timestamp) {
+        console.log(`[${timestamp}] 🚀 ApiController [${requestId}] submitWithSSE вызван`, {
+            targetEndpoint,
+            fileName: file.name,
+            fileSize: file.size
+        });
+
+        // Диспатчим событие начала SSE загрузки
+        this.dispatchSSEStart(targetEndpoint, payload);
+
+        try {
+            // Создаем FormData
+            const formData = new FormData();
+            formData.append('file', file);
+
+            // Добавляем остальные поля из payload
+            for (const [key, value] of Object.entries(payload)) {
+                if (value !== undefined && value !== null) {
+                    formData.append(key, value);
+                }
+            }
+
+            // Добавляем CSRF токен
+            if (token) {
+                formData.append('_csrf_token', token);
+            }
+
+            console.log(`[${timestamp}] 📡 ApiController [${requestId}] Устанавливаем SSE соединение...`);
+
+            // Используем SSEHelper для установки соединения
+            await SSEHelper.connect(targetEndpoint, {
+                body: formData,
+                headers: {
+                    ...(token && { 'X-CSRF-Token': token })
+                },
+                onProgress: (data) => {
+                    console.log(`[${timestamp}] 📊 ApiController [${requestId}] SSE Progress: ${data.progress}% at stage ${data.stage}`);
+                    this.dispatchSSEProgress(data);
+                },
+                onComplete: (data) => {
+                    console.log(`[${timestamp}] ✅ ApiController [${requestId}] SSE Complete`);
+                    this.dispatchSSEComplete(data);
+                },
+                onError: (error) => {
+                    console.error(`[${timestamp}] ❌ ApiController [${requestId}] SSE Error:`, error);
+                    this.dispatchSSEError(error);
+                }
+            });
+
+        } catch (error) {
+            console.error(`[${timestamp}] 💥 ApiController [${requestId}] КРИТИЧЕСКАЯ ОШИБКА SSE`, {
+                error: error.message,
+                stack: error.stack
+            });
+            this.dispatchNetworkError(error, this.getNetworkErrorMessage(error));
+        }
+    }
+
+    /**
+     * Диспатчит событие начала SSE загрузки
+     * 
+     * @param {string} endpoint - URL endpoint
+     * @param {Object} payload - Данные формы
+     */
+    dispatchSSEStart(endpoint, payload) {
+        const event = new CustomEvent('api:sse-start', {
+            bubbles: true,
+            detail: { endpoint, payload }
+        });
+        this.element.dispatchEvent(event);
+    }
+
+    /**
+     * Диспатчит событие SSE прогресса
+     * 
+     * @param {Object} data - Данные прогресса {progress, stage, ...}
+     */
+    dispatchSSEProgress(data) {
+        const event = new CustomEvent('api:sse-progress', {
+            bubbles: true,
+            detail: data
+        });
+        this.element.dispatchEvent(event);
+    }
+
+    /**
+     * Диспатчит событие завершения SSE
+     * 
+     * @param {Object} data - Данные результата
+     */
+    dispatchSSEComplete(data) {
+        const event = new CustomEvent('api:sse-complete', {
+            bubbles: true,
+            detail: data
+        });
+        this.element.dispatchEvent(event);
+    }
+
+    /**
+     * Диспатчит событие ошибки SSE
+     * 
+     * @param {Object} error - Объект ошибки
+     */
+    dispatchSSEError(error) {
+        const event = new CustomEvent('api:sse-error', {
+            bubbles: true,
+            detail: error
+        });
+        this.element.dispatchEvent(event);
     }
 
     /**

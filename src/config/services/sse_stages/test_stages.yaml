@@ -1,0 +1,30 @@
+# Этапы обработки для тестового сервиса
+
+service_name: "test"
+description: "Test service stages for development and debugging"
+
+stages:
+  - id: "preparing"
+    progress: 20
+    supports_substeps: false
+    timeout_seconds: 30
+    description: "Preparing test environment"
+
+  - id: "executing"
+    progress: 60
+    supports_substeps: true
+    timeout_seconds: 60
+    description: "Executing test operations"
+
+  - id: "validating"
+    progress: 80
+    supports_substeps: false
+    timeout_seconds: 30
+    description: "Validating test results"
+
+# Настройки для тестового сервиса
+settings:
+  auto_initialize: true
+  auto_complete: true
+  validate_sequence: true
+  allow_custom_stages: true
