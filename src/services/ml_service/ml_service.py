@@ -116,14 +116,17 @@ class MLService(BaseService):
         self._start_tracking()
 
         try:
-            path = data.get("path", "")
-            name = data.get("name", "")
-            result_dir = data.get("res_dir", "var/results")
-
+            params = data.get("data", {})
+            
+            path = params.get("path", "")
+            name = params.get("name", "")
+            result_dir = params.get("res_dir", "var/results")
+            
             if not path or not name:
                 yield self.create_error_message(
                     error_code="INVALID_INPUT",
-                    error_message="Path or name missing"
+                    error_message="Path or name missing",
+                    stage_failed=self._current_stage_id or "initialization"
                 )
                 return
 
@@ -392,10 +395,3 @@ class MLService(BaseService):
         logging.info("🧹 Временные файлы удалены")
 
         return {'status': True}
-
-    async def execute_stream(self, data: dict):
-        self._start_tracking()
-        
-        self.next_stage()
-        
-        
