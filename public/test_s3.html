@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yandex S3 Storage Test</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+
+        h1 {
+            color: #333;
+            border-bottom: 3px solid #4caf50;
+            padding-bottom: 10px;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+            border-bottom: 2px solid #ddd;
+        }
+
+        .tab {
+            padding: 10px 20px;
+            background-color: #f0f0f0;
+            border: none;
+            cursor: pointer;
+            border-radius: 5px 5px 0 0;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+
+        .tab.active {
+            background-color: #4caf50;
+            color: white;
+        }
+
+        .tab:hover:not(.active) {
+            background-color: #e0e0e0;
+        }
+
+        .tab-content {
+            display: none;
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .operation-form {
+            border: 2px dashed #ccc;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+
+        .form-group {
+            margin: 15px 0;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+
+        .form-group input[type="text"],
+        .form-group input[type="file"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        button {
+            background-color: #4caf50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+
+        button:hover:not(:disabled) {
+            background-color: #45a049;
+        }
+
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+
+        .progress-container {
+            margin: 20px 0;
+            display: none;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background-color: #f0f0f0;
+            border-radius: 15px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4caf50 0%, #45a049 100%);
+            width: 0%;
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+
+        .stage-info {
+            margin-top: 10px;
+            font-weight: bold;
+            color: #555;
+        }
+
+        .eta-info {
+            margin-top: 5px;
+            font-size: 14px;
+            color: #777;
+        }
+
+        .log {
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+            border: 1px solid #333;
+            padding: 15px;
+            height: 300px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            white-space: pre-wrap;
+            border-radius: 5px;
+        }
+
+        .log .timestamp {
+            color: #858585;
+        }
+
+        .log .event-progress {
+            color: #4ec9b0;
+        }
+
+        .log .event-complete {
+            color: #4caf50;
+            font-weight: bold;
+        }
+
+        .log .event-error {
+            color: #f48771;
+            font-weight: bold;
+        }
+
+        .log .stage {
+            color: #dcdcaa;
+        }
+
+        .status {
+            margin: 10px 0;
+            padding: 15px;
+            border-radius: 5px;
+            display: none;
+        }
+
+        .status.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .status.processing {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .result-box {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            display: none;
+        }
+
+        .result-box h4 {
+            margin-top: 0;
+            color: #333;
+        }
+
+        .result-field {
+            margin: 10px 0;
+            font-family: monospace;
+        }
+
+        .result-field strong {
+            color: #555;
+        }
+
+        .result-url {
+            color: #0066cc;
+            word-break: break-all;
+        }
+
+        .clear-btn {
+            background-color: #ff9800;
+            margin-left: 10px;
+        }
+
+        .clear-btn:hover {
+            background-color: #e68900;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>🗄️ Yandex Object Storage (S3) - Тестирование</h1>
+
+    <div class="tabs">
+        <button class="tab active" onclick="switchTab('upload')">📤 Загрузка</button>
+        <button class="tab" onclick="switchTab('download')">📥 Скачивание</button>
+        <button class="tab" onclick="switchTab('delete')">🗑️ Удаление</button>
+    </div>
+
+    <!-- Upload Tab -->
+    <div id="upload-tab" class="tab-content active">
+        <div class="operation-form">
+            <h3>Загрузка файла в Object Storage</h3>
+            <div class="form-group">
+                <label for="uploadFile">Выберите файл:</label>
+                <input type="file" id="uploadFile">
+            </div>
+            <div class="form-group">
+                <label for="uploadObjectKey">Ключ объекта (опционально):</label>
+                <input type="text" id="uploadObjectKey" placeholder="Оставьте пустым для автоматического имени">
+            </div>
+            <div class="form-group">
+                <label for="uploadContentType">Content-Type (опционально):</label>
+                <input type="text" id="uploadContentType" placeholder="application/octet-stream">
+            </div>
+            <button onclick="startUpload()" id="uploadBtn">Загрузить в S3</button>
+            <button onclick="clearLog()" class="clear-btn">Очистить лог</button>
+        </div>
+
+        <div class="progress-container" id="uploadProgress">
+            <h3>Прогресс загрузки</h3>
+            <div class="progress-bar">
+                <div class="progress-fill" id="uploadProgressFill">0%</div>
+            </div>
+            <div class="stage-info" id="uploadStageLabel">Ожидание...</div>
+            <div class="eta-info" id="uploadEtaLabel"></div>
+        </div>
+
+        <div class="status" id="uploadStatus"></div>
+
+        <div class="result-box" id="uploadResult">
+            <h4>✅ Результат загрузки</h4>
+            <div id="uploadResultContent"></div>
+        </div>
+    </div>
+
+    <!-- Download Tab -->
+    <div id="download-tab" class="tab-content">
+        <div class="operation-form">
+            <h3>Скачивание файла из Object Storage</h3>
+            <div class="form-group">
+                <label for="downloadObjectKey">Ключ объекта:</label>
+                <input type="text" id="downloadObjectKey" placeholder="example.txt">
+            </div>
+            <div class="form-group">
+                <label for="downloadFileName">Имя файла для сохранения:</label>
+                <input type="text" id="downloadFileName" placeholder="downloaded_file.txt">
+            </div>
+            <button onclick="startDownload()" id="downloadBtn">Скачать из S3</button>
+            <button onclick="clearLog()" class="clear-btn">Очистить лог</button>
+        </div>
+
+        <div class="progress-container" id="downloadProgress">
+            <h3>Прогресс скачивания</h3>
+            <div class="progress-bar">
+                <div class="progress-fill" id="downloadProgressFill">0%</div>
+            </div>
+            <div class="stage-info" id="downloadStageLabel">Ожидание...</div>
+            <div class="eta-info" id="downloadEtaLabel"></div>
+        </div>
+
+        <div class="status" id="downloadStatus"></div>
+
+        <div class="result-box" id="downloadResult">
+            <h4>✅ Результат скачивания</h4>
+            <div id="downloadResultContent"></div>
+        </div>
+    </div>
+
+    <!-- Delete Tab -->
+    <div id="delete-tab" class="tab-content">
+        <div class="operation-form">
+            <h3>Удаление файла из Object Storage</h3>
+            <div class="form-group">
+                <label for="deleteObjectKey">Ключ объекта:</label>
+                <input type="text" id="deleteObjectKey" placeholder="example.txt">
+            </div>
+            <div class="form-group">
+                <label for="deleteVersionId">Version ID (опционально):</label>
+                <input type="text" id="deleteVersionId" placeholder="Только если включено версионирование">
+            </div>
+            <button onclick="startDelete()" id="deleteBtn">Удалить из S3</button>
+            <button onclick="clearLog()" class="clear-btn">Очистить лог</button>
+        </div>
+
+        <div class="progress-container" id="deleteProgress">
+            <h3>Прогресс удаления</h3>
+            <div class="progress-bar">
+                <div class="progress-fill" id="deleteProgressFill">0%</div>
+            </div>
+            <div class="stage-info" id="deleteStageLabel">Ожидание...</div>
+        </div>
+
+        <div class="status" id="deleteStatus"></div>
+
+        <div class="result-box" id="deleteResult">
+            <h4>✅ Результат удаления</h4>
+            <div id="deleteResultContent"></div>
+        </div>
+    </div>
+
+    <h3>📋 Лог событий SSE</h3>
+    <div class="log" id="logArea">Ожидание событий...\n</div>
+
+    <script>
+        let currentOperation = null;
+
+        // Словарь человекочитаемых названий этапов
+        const stageLabels = {
+            'initializing': '🔧 Инициализация',
+            'authenticating': '🔐 Аутентификация',
+            'preparing': '📦 Подготовка',
+            'processing': '⚙️ Обработка',
+            'finalizing': '✨ Завершение',
+            'multipart_init': '🔀 Инициализация multipart',
+            'multipart_upload': '📤 Загрузка частей',
+            'multipart_complete': '🎯 Завершение multipart',
+            'metadata_fetch': '📄 Получение метаданных',
+            'streaming_download': '💾 Потоковая загрузка',
+            'complete': '✅ Завершено',
+            'error': '❌ Ошибка'
+        };
+
+        function switchTab(tab) {
+            // Скрываем все вкладки
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+
+            // Показываем выбранную
+            document.getElementById(`${tab}-tab`).classList.add('active');
+            event.target.classList.add('active');
+
+            currentOperation = tab;
+        }
+
+        function log(message, type = 'info') {
+            const logArea = document.getElementById('logArea');
+            const timestamp = new Date().toLocaleTimeString();
+            let className = '';
+
+            if (message.includes('progress:')) className = 'event-progress';
+            if (message.includes('✅') || message.includes('Complete')) className = 'event-complete';
+            if (message.includes('❌') || message.includes('Error')) className = 'event-error';
+            if (message.includes('stage:')) className = 'stage';
+
+            const line = `<span class="timestamp">[${timestamp}]</span> <span class="${className}">${escapeHtml(message)}</span>\n`;
+            logArea.innerHTML += line;
+            logArea.scrollTop = logArea.scrollHeight;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function clearLog() {
+            document.getElementById('logArea').innerHTML = 'Лог очищен...\n';
+        }
+
+        function showStatus(message, type, operation) {
+            const statusEl = document.getElementById(`${operation}Status`);
+            statusEl.textContent = message;
+            statusEl.className = `status ${type}`;
+            statusEl.style.display = 'block';
+        }
+
+        function updateProgress(progress, stage, operation, details = null) {
+            const progressFill = document.getElementById(`${operation}ProgressFill`);
+            const stageLabel = document.getElementById(`${operation}StageLabel`);
+            const etaLabel = document.getElementById(`${operation}EtaLabel`);
+
+            progressFill.style.width = `${progress}%`;
+            progressFill.textContent = `${progress}%`;
+
+            const label = stageLabels[stage] || stage || 'Обработка...';
+            stageLabel.textContent = label;
+
+            // Показываем ETA и подстадии если есть
+            if (details) {
+                let etaText = '';
+                if (details.current_step && details.total_steps) {
+                    etaText += `Шаг ${details.current_step} из ${details.total_steps}`;
+                }
+                if (details.eta_seconds) {
+                    const minutes = Math.floor(details.eta_seconds / 60);
+                    const seconds = details.eta_seconds % 60;
+                    etaText += ` | ETA: ${minutes}m ${seconds}s`;
+                }
+                etaLabel.textContent = etaText;
+            } else {
+                etaLabel.textContent = '';
+            }
+        }
+
+        function showResult(result, operation) {
+            const resultBox = document.getElementById(`${operation}Result`);
+            const resultContent = document.getElementById(`${operation}ResultContent`);
+
+            let html = '';
+
+            if (operation === 'upload') {
+                html = `
+                    <div class="result-field"><strong>Объект:</strong> ${result.object_key}</div>
+                    <div class="result-field"><strong>Бакет:</strong> ${result.bucket}</div>
+                    <div class="result-field"><strong>Размер:</strong> ${formatBytes(result.size)}</div>
+                    <div class="result-field"><strong>URL:</strong> <a href="${result.url}" target="_blank" class="result-url">${result.url}</a></div>
+                    <div class="result-field"><strong>ETag:</strong> ${result.etag}</div>
+                    <div class="result-field"><strong>Загружено:</strong> ${result.uploaded_at}</div>
+                    ${result.multipart ? '<div class="result-field"><strong>Multipart:</strong> ✅ Да (частей: ' + result.parts_count + ')</div>' : ''}
+                `;
+            } else if (operation === 'download') {
+                html = `
+                    <div class="result-field"><strong>Объект:</strong> ${result.object_key}</div>
+                    <div class="result-field"><strong>Сохранен как:</strong> ${result.destination_path}</div>
+                    <div class="result-field"><strong>Размер:</strong> ${formatBytes(result.size)}</div>
+                    <div class="result-field"><strong>ETag:</strong> ${result.etag}</div>
+                    <div class="result-field"><strong>Content-Type:</strong> ${result.content_type}</div>
+                    <div class="result-field"><strong>Скачано:</strong> ${result.downloaded_at}</div>
+                `;
+            } else if (operation === 'delete') {
+                html = `
+                    <div class="result-field"><strong>Объект:</strong> ${result.object_key}</div>
+                    <div class="result-field"><strong>Бакет:</strong> ${result.bucket}</div>
+                    <div class="result-field"><strong>Статус:</strong> ${result.deleted ? '✅ Удален' : '❌ Не удален'}</div>
+                    <div class="result-field"><strong>Удалено:</strong> ${result.deleted_at}</div>
+                    ${result.version_id ? '<div class="result-field"><strong>Version ID:</strong> ' + result.version_id + '</div>' : ''}
+                `;
+            }
+
+            resultContent.innerHTML = html;
+            resultBox.style.display = 'block';
+        }
+
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+        }
+
+        async function startUpload() {
+            const fileInput = document.getElementById('uploadFile');
+            const objectKey = document.getElementById('uploadObjectKey').value.trim();
+            const contentType = document.getElementById('uploadContentType').value.trim();
+            const uploadBtn = document.getElementById('uploadBtn');
+            const progressContainer = document.getElementById('uploadProgress');
+
+            if (!fileInput.files[0]) {
+                alert('Выберите файл для загрузки');
+                return;
+            }
+
+            const file = fileInput.files[0];
+            log(`🚀 Начало загрузки файла: ${file.name} (${formatBytes(file.size)})`);
+
+            progressContainer.style.display = 'block';
+            uploadBtn.disabled = true;
+            showStatus('Начинается загрузка в Object Storage...', 'processing', 'upload');
+
+            try {
+                const formData = new FormData();
+                formData.append('operation', 'upload');
+                formData.append('file', file);
+                if (objectKey) formData.append('object_key', objectKey);
+                if (contentType) formData.append('content_type', contentType);
+
+                await processSSEStream('/api/s3/stream', formData, 'upload');
+
+            } catch (error) {
+                log(`❌ Ошибка загрузки: ${error.message}`);
+                showStatus(`Ошибка: ${error.message}`, 'error', 'upload');
+                uploadBtn.disabled = false;
+            }
+        }
+
+        async function startDownload() {
+            const objectKey = document.getElementById('downloadObjectKey').value.trim();
+            const fileName = document.getElementById('downloadFileName').value.trim();
+            const downloadBtn = document.getElementById('downloadBtn');
+            const progressContainer = document.getElementById('downloadProgress');
+
+            if (!objectKey) {
+                alert('Укажите ключ объекта для скачивания');
+                return;
+            }
+
+            log(`🚀 Начало скачивания объекта: ${objectKey}`);
+
+            progressContainer.style.display = 'block';
+            downloadBtn.disabled = true;
+            showStatus('Начинается скачивание из Object Storage...', 'processing', 'download');
+
+            try {
+                const formData = new FormData();
+                formData.append('operation', 'download');
+                formData.append('object_key', objectKey);
+                formData.append('destination_path', fileName || objectKey);
+
+                await processSSEStream('/api/s3/stream', formData, 'download');
+
+            } catch (error) {
+                log(`❌ Ошибка скачивания: ${error.message}`);
+                showStatus(`Ошибка: ${error.message}`, 'error', 'download');
+                downloadBtn.disabled = false;
+            }
+        }
+
+        async function startDelete() {
+            const objectKey = document.getElementById('deleteObjectKey').value.trim();
+            const versionId = document.getElementById('deleteVersionId').value.trim();
+            const deleteBtn = document.getElementById('deleteBtn');
+            const progressContainer = document.getElementById('deleteProgress');
+
+            if (!objectKey) {
+                alert('Укажите ключ объекта для удаления');
+                return;
+            }
+
+            if (!confirm(`Вы уверены, что хотите удалить объект "${objectKey}"?`)) {
+                return;
+            }
+
+            log(`🚀 Начало удаления объекта: ${objectKey}`);
+
+            progressContainer.style.display = 'block';
+            deleteBtn.disabled = true;
+            showStatus('Удаление из Object Storage...', 'processing', 'delete');
+
+            try {
+                const formData = new FormData();
+                formData.append('operation', 'delete');
+                formData.append('object_key', objectKey);
+                if (versionId) formData.append('version_id', versionId);
+
+                await processSSEStream('/api/s3/stream', formData, 'delete');
+
+            } catch (error) {
+                log(`❌ Ошибка удаления: ${error.message}`);
+                showStatus(`Ошибка: ${error.message}`, 'error', 'delete');
+                deleteBtn.disabled = false;
+            }
+        }
+
+        async function processSSEStream(url, formData, operation) {
+            const response = await fetch(url, {
+                method: 'POST',
+                body: formData,
+                credentials: 'include'
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            log(`✅ Соединение установлено. Чтение SSE потока...`);
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+
+                if (done) {
+                    log('🏁 Поток завершен');
+                    break;
+                }
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n\n');
+                buffer = lines.pop();
+
+                for (const message of lines) {
+                    if (!message.trim()) continue;
+
+                    try {
+                        const eventLines = message.split('\n');
+                        let eventType = 'message';
+                        let eventData = '';
+
+                        for (const line of eventLines) {
+                            if (line.startsWith('event: ')) {
+                                eventType = line.substring(7);
+                            } else if (line.startsWith('data: ')) {
+                                eventData = line.substring(6);
+                            }
+                        }
+
+                        if (!eventData) continue;
+
+                        const data = JSON.parse(eventData);
+
+                        log(`📨 Event [${eventType}]: progress=${data.progress}, stage=${data.stage}`);
+
+                        if (eventType === 'progress') {
+                            updateProgress(data.progress, data.stage, operation, data.details);
+                            const label = stageLabels[data.stage] || data.stage;
+                            showStatus(`${data.progress}% - ${label}`, 'processing', operation);
+                        } else if (eventType === 'complete') {
+                            log(`✅ Операция ${operation} успешно завершена`);
+                            updateProgress(100, 'complete', operation);
+                            showStatus('Операция успешно завершена!', 'success', operation);
+                            showResult(data.result, operation);
+                            document.getElementById(`${operation}Btn`).disabled = false;
+                        } else if (eventType === 'error') {
+                            const errorMsg = data.error?.message || 'Unknown error';
+                            log(`❌ Ошибка: ${errorMsg}`);
+                            showStatus(`Ошибка: ${errorMsg}`, 'error', operation);
+                            document.getElementById(`${operation}Btn`).disabled = false;
+                            break;
+                        }
+                    } catch (e) {
+                        log(`⚠️ Ошибка парсинга SSE: ${e.message}`);
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+
+</html>
