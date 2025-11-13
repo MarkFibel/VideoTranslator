@@ -1,0 +1,98 @@
+# Этапы обработки для сервиса Yandex Object Storage S3
+# Поддерживает операции: upload, download, delete
+
+service_name: "ya_s3"
+description: "Yandex Object Storage S3 service stages for file operations"
+
+# Общие стадии для всех операций
+stages:
+  # Стадия 1: Инициализация и подготовка
+  - id: "initializing"
+    progress: 5
+    supports_substeps: false
+    timeout_seconds: 30
+    description: "Инициализация операции и валидация параметров"
+  
+  # Стадия 2: Аутентификация
+  - id: "authenticating"
+    progress: 15
+    supports_substeps: false
+    timeout_seconds: 60
+    description: "Аутентификация с Yandex Cloud и проверка IAM токена"
+  
+  # Стадия 3: Подготовка к операции
+  - id: "preparing"
+    progress: 25
+    supports_substeps: true
+    timeout_seconds: 120
+    description: "Подготовка файлов и метаданных для операции"
+  
+  # Стадия 4: Выполнение основной операции
+  - id: "processing"
+    progress: 70
+    supports_substeps: true
+    timeout_seconds: 600
+    description: "Выполнение операции с Object Storage (upload/download/delete)"
+  
+  # Стадия 5: Завершение и верификация
+  - id: "finalizing"
+    progress: 90
+    supports_substeps: false
+    timeout_seconds: 60
+    description: "Финализация операции и проверка результатов"
+
+# Специфичные стадии для multipart загрузки (используются при больших файлах)
+multipart_stages:
+  # Инициализация multipart сессии
+  - id: "multipart_init"
+    progress: 20
+    supports_substeps: false
+    timeout_seconds: 60
+    description: "Инициализация multipart загрузки и получение upload_id"
+  
+  # Загрузка частей файла
+  - id: "multipart_upload"
+    progress: 75
+    supports_substeps: true
+    timeout_seconds: 900
+    description: "Загрузка частей файла (части загружаются параллельно)"
+  
+  # Завершение multipart сессии
+  - id: "multipart_complete"
+    progress: 90
+    supports_substeps: false
+    timeout_seconds: 120
+    description: "Завершение multipart загрузки и сборка файла"
+
+# Стадии для операции скачивания с поддержкой Range запросов
+download_stages:
+  # Получение метаданных файла
+  - id: "metadata_fetch"
+    progress: 20
+    supports_substeps: false
+    timeout_seconds: 30
+    description: "Получение метаданных объекта (размер, ETag, Content-Type)"
+  
+  # Потоковая загрузка данных
+  - id: "streaming_download"
+    progress: 80
+    supports_substeps: true
+    timeout_seconds: 600
+    description: "Потоковое скачивание данных с возможностью докачки"
+
+# Настройки для сервиса
+settings:
+  auto_initialize: true  # Автоматически переходить к первому этапу
+  auto_complete: true  # Автоматически отправлять событие complete
+  validate_sequence: true  # Проверять последовательность этапов
+  allow_custom_stages: false  # Не разрешать пользовательские этапы
+  enable_eta: true  # Включить расчет ETA для длительных операций
+  
+  # Настройки для повторных попыток
+  retry_stages:
+    - "authenticating"  # Повторять при проблемах с токеном
+    - "processing"  # Повторять основную операцию при сетевых ошибках
+    - "multipart_upload"  # Повторять загрузку частей при сбоях
+  
+  max_retry_attempts: 3
+  retry_delay_seconds: 2
