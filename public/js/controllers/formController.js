@@ -1,4 +1,5 @@
 // static/js/controllers/hello_controller.js
+// VERSION: 2025-11-13T17:52:00Z - SSE Error Fix Applied
 const { Controller } = Stimulus;
 import { preparePayload, validateFormData } from '../helpers/formDataPreparer.js';
 
@@ -360,8 +361,25 @@ export default class extends Controller {
      * @param {boolean} allowRetry - Показывать ли кнопку повтора
      */
     showError(message, allowRetry = false) {
+        const timestamp = new Date().toISOString();
+        console.log(`[${timestamp}] ❌ FormController.showError: "${message}", allowRetry=${allowRetry}`);
+        
         this.hideAllStates();
 
+        // Также показываем ошибку через fileController, если он доступен
+        const fileElement = this.element.querySelector('[data-controller*="file"]');
+        if (fileElement) {
+            const fileController = this.application.getControllerForElementAndIdentifier(
+                fileElement,
+                'file'
+            );
+            
+            if (fileController && typeof fileController.showError === 'function') {
+                fileController.showError(message);
+            }
+        }
+
+        // Показываем через свои targets (если они есть - для старой структуры)
         if (this.hasErrorContainerTarget) {
             this.errorContainerTarget.classList.remove('form-state-hidden');
             this.errorContainerTarget.classList.add('form-state-visible');
@@ -490,15 +508,31 @@ export default class extends Controller {
      */
     onApiError(event) {
         const timestamp = new Date().toISOString();
-        const { message, errors, repeat, captcha_retry } = event.detail;
+        const detail = event.detail || {};
+        
+        // Поддерживаем разные форматы: 
+        // 1. Старый формат: { message, errors, repeat, captcha_retry }
+        // 2. Новый SSE формат: { code, detail, stage_failed }
+        const message = detail.message || detail.detail || 'Произошла ошибка при обработке запроса';
+        const errors = detail.errors;
+        const repeat = detail.repeat;
+        const captcha_retry = detail.captcha_retry;
 
         console.warn(`[${timestamp}] ❌ FormController.onApiError - ошибка от сервера`, {
             message,
+            code: detail.code,
             hasErrors: !!errors && Object.keys(errors).length > 0,
             errorCount: errors ? Object.keys(errors).length : 0,
             repeat,
-            captcha_retry
+            captcha_retry,
+            stage_failed: detail.stage_failed
         });
+
+        // КРИТИЧЕСКИ ВАЖНО: Останавливаем прогресс-бар при любой ошибке
+        this.stopProgressBar();
+        
+        // Разблокируем кнопку отправки
+        this.enableSubmitButton();
 
         // Если ошибка связана с капчей и требуется повторная попытка
         if (captcha_retry) {
@@ -509,7 +543,6 @@ export default class extends Controller {
         // и восстанавливаем форму, чтобы пользователь мог исправить
         if (errors && Object.keys(errors).length > 0) {
             this.showForm();
-            this.enableSubmitButton();
             this.dispatchValidationError(errors);
             return;
         }
@@ -517,10 +550,7 @@ export default class extends Controller {
         // Иначе показываем общее сообщение об ошибке
         // repeat определяет, показывать ли кнопку "Повторить запрос"
         const allowRetry = repeat === true;
-        this.showError(
-            message || 'Произошла ошибка при обработке запроса',
-            allowRetry
-        );
+        this.showError(message, allowRetry);
     }
 
     /**
@@ -532,6 +562,12 @@ export default class extends Controller {
         const { message } = event.detail;
 
         console.error(`[${timestamp}] 🌐❌ FormController.onNetworkError - сетевая ошибка`, { message });
+
+        // КРИТИЧЕСКИ ВАЖНО: Останавливаем прогресс-бар при сетевой ошибке
+        this.stopProgressBar();
+        
+        // Разблокируем кнопку отправки
+        this.enableSubmitButton();
 
         // Сетевые ошибки всегда можно повторить
         this.showError(
@@ -731,22 +767,31 @@ export default class extends Controller {
      * @param {CustomEvent} event
      */
     onSSEError(event) {
-        console.error('SSE upload error', event.detail);
+        const timestamp = new Date().toISOString();
+        console.error(`[${timestamp}] ❌ FormController.onSSEError - SSE upload error`, event.detail);
         
         // Разблокируем кнопку удаления файла
         this.enableFileRemoveButton();
+        
+        // Структура event.detail: { progress: -1, stage: 'error', status: 'error', error: {...}, timestamp: '...' }
+        // Извлекаем вложенный объект error
+        const errorData = event.detail.error || {};
+        
+        console.log(`[${timestamp}] 📦 Extracted error data:`, errorData);
         
         // Переиспользуем существующую логику ошибок
         // Трансформируем SSE событие в формат api:error
         const errorEvent = new CustomEvent('api:error', {
             bubbles: true,
             detail: {
-                code: event.detail.error_code || 'sse_error',
-                detail: event.detail.error_message || 'Ошибка обработки файла',
-                stage_failed: event.detail.stage_failed
+                code: errorData.code || 'sse_error',
+                message: errorData.message || errorData.details || 'Ошибка обработки файла',
+                stage_failed: errorData.stage_failed,
+                repeat: true // Разрешаем повторную попытку при SSE ошибках
             }
         });
         
+        console.log(`[${timestamp}] 🔄 Calling onApiError with:`, errorEvent.detail);
         this.onApiError(errorEvent);
     }
 
@@ -839,6 +884,12 @@ export default class extends Controller {
      * Разблокирует кнопку отправки
      */
     enableSubmitButton() {
+        const timestamp = new Date().toISOString();
+        console.log(`[${timestamp}] 🔓 FormController.enableSubmitButton вызван`, {
+            hasTarget: this.hasSubmitButtonTarget,
+            button: this.hasSubmitButtonTarget ? this.submitButtonTarget : null
+        });
+        
         if (this.hasSubmitButtonTarget) {
             this.submitButtonTarget.disabled = false;
             this.submitButtonTarget.classList.remove('loading');
@@ -846,6 +897,13 @@ export default class extends Controller {
             // Показываем текст кнопки и скрываем спиннер
             const buttonText = this.submitButtonTarget.querySelector('.button-text');
             const buttonSpinner = this.submitButtonTarget.querySelector('.button-spinner');
+
+            console.log(`[${timestamp}] 🔍 Найденные элементы:`, {
+                buttonText: !!buttonText,
+                buttonSpinner: !!buttonSpinner,
+                buttonTextHasHidden: buttonText?.classList.contains('d-none'),
+                buttonSpinnerHasHidden: buttonSpinner?.classList.contains('d-none')
+            });
 
             if (buttonText) {
                 buttonText.classList.remove('d-none');
@@ -860,6 +918,13 @@ export default class extends Controller {
             if (spinner) {
                 spinner.classList.add('d-none');
             }
+            
+            console.log(`[${timestamp}] ✅ Кнопка отправки разблокирована`, {
+                disabled: this.submitButtonTarget.disabled,
+                hasLoadingClass: this.submitButtonTarget.classList.contains('loading')
+            });
+        } else {
+            console.error(`[${timestamp}] ❌ submitButtonTarget не найден!`);
         }
     }
 
@@ -1189,5 +1254,38 @@ export default class extends Controller {
         this.enableSubmitButton();
 
         console.log(`[${timestamp}] ✅ Форма очищена и готова к новой загрузке`);
+    }
+    
+    /**
+     * Останавливает и скрывает прогресс-бар при ошибке
+     */
+    stopProgressBar() {
+        const timestamp = new Date().toISOString();
+        console.log(`[${timestamp}] 🛑 FormController.stopProgressBar - останавливаем прогресс`);
+        
+        // Отправляем событие для fileController, чтобы скрыть прогресс
+        const progressEvent = new CustomEvent('progress:update', {
+            bubbles: true,
+            detail: {
+                progress: 0,
+                stage: 'idle',
+                status: 'idle'
+            }
+        });
+        
+        this.element.dispatchEvent(progressEvent);
+        
+        // Также напрямую скрываем прогресс если есть доступ к fileController
+        const fileElement = this.element.querySelector('[data-controller*="file"]');
+        if (fileElement) {
+            const fileController = this.application.getControllerForElementAndIdentifier(
+                fileElement,
+                'file'
+            );
+            
+            if (fileController && typeof fileController.hideProgress === 'function') {
+                fileController.hideProgress();
+            }
+        }
     }
 }
