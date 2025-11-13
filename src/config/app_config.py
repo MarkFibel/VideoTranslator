@@ -36,5 +36,10 @@ class Settings(BaseSettings):
     SESSION_GC_THRESHOLD: int = 10  # Порог количества сессий для запуска GC (legacy, теперь используется periodic cleanup)
     SESSION_CLEANUP_INTERVAL_MINUTES: int = 5  # Интервал периодической очистки сессий в минутах
     
+    # Настройки Yandex SmartCaptcha
+    CAPTCHA_SITEKEY: str = ""  # Client-side ключ Yandex SmartCaptcha (получите на https://yandex.cloud/ru/services/smartcaptcha)
+    CAPTCHA_SERVER_KEY: str = ""  # Server-side ключ для проверки капчи на сервере
+    CAPTCHA_ENABLED: bool = False  # Включить/выключить проверку капчи (для разработки можно отключить)
+    
 
 settings = Settings()

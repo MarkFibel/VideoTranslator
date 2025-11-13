@@ -80,6 +80,26 @@ def setup_logging(log_level: str = "INFO", log_dir: str = "var/log") -> None:
                 "level": "INFO",
                 "handlers": ["console", "file_info"],
                 "propagate": False
+            },
+            "sse": {
+                "level": "INFO",
+                "handlers": ["console", "file_info"],
+                "propagate": False
+            },
+            "sse.connections": {
+                "level": "DEBUG",
+                "handlers": ["console", "file_info"],
+                "propagate": False
+            },
+            "sse.streaming": {
+                "level": "INFO",
+                "handlers": ["console", "file_info"],
+                "propagate": False
+            },
+            "sse.errors": {
+                "level": "ERROR",
+                "handlers": ["console", "file_error"],
+                "propagate": False
             }
         }
     }

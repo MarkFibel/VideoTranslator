@@ -1,0 +1,825 @@
+body {
+    background-color: #000;
+    color: #00ff00;
+    font-family: 'Courier New', monospace;
+    position: relative;
+    padding-top: 50px;
+    /* отступ сверху */
+    padding-bottom: 50px;
+    /* отступ снизу */
+}
+
+.glow {
+    text-shadow: 0 0 6.5px #00ff00, 0 0 10px #00ff00;
+}
+
+.border-glow {
+    border: 1px solid #00ff00;
+    box-shadow: 0 0 10px #00ff00;
+}
+
+.progress-bar {
+    height: 4px;
+    background-color: #003300;
+}
+
+.progress-fill {
+    background-color: #00ff00;
+    width: 0%;
+    transition: width 0.5s ease-in-out;
+}
+
+.language-switcher {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 30px;
+    background: rgba(0, 0, 0, 0.8);
+    border: 1px solid #00ff00;
+    border-radius: 4px;
+    overflow: hidden;
+    box-shadow: 0 0 10px #00ff00;
+    width: fit-content;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.language-btn {
+    background: transparent;
+    color: #00ff00;
+    padding: 8px 16px;
+    cursor: pointer;
+    transition: all 0.3s;
+    border: none;
+    font-family: 'Courier New', monospace;
+    font-weight: bold;
+}
+
+.language-btn:hover {
+    background-color: #00ff00;
+    color: #000;
+}
+
+.language-btn.active {
+    background-color: #00ff00;
+    color: #000;
+}
+
+.how-it-works {
+    background: rgba(0, 0, 0, 0.8) !important;
+    border: 1px solid #00ff00;
+    box-shadow: 0 0 15px #00ff00;
+    color: #00ff00;
+}
+
+.how-it-works h3 {
+    color: #00ff00;
+    text-shadow: 0 0 5px #00ff00;
+}
+
+.how-it-works h4 {
+    color: #00ff00;
+}
+
+.how-it-works p {
+    color: #00cc00;
+}
+
+.icon-circle {
+    background: rgba(0, 255, 0, 0.1) !important;
+    border: 1px solid #00ff00;
+    box-shadow: 0 0 8px #00ff00;
+}
+
+.icon-circle i {
+    color: #00ff00 !important;
+    text-shadow: 0 0 5px #00ff00;
+}
+
+/* Matrix-styled card */
+.matrix-card {
+    background: rgba(0, 0, 0, 0.9);
+    border: 1px solid #00ff00;
+    border-radius: 8px;
+    box-shadow: 0 0 20px #00ff00;
+    padding: 2rem;
+    margin-top: 2rem;
+    transition: all 0.4s ease-in-out;
+    height: auto;
+}
+
+.matrix-card-body {
+    color: #00ff00;
+    transition: all 0.4s ease-in-out;
+}
+
+.matrix-card-title {
+    font-size: 2rem;
+    margin-bottom: 1rem;
+    text-align: center;
+}
+
+.matrix-card-text {
+    text-align: center;
+    margin-bottom: 2rem;
+    color: #00cc00;
+}
+
+/* Matrix form fields */
+.form-field {
+    position: relative;
+    margin-bottom: 1.5rem;
+}
+
+.form-field input,
+.form-field textarea,
+.form-field select {
+    width: 100%;
+    padding: 12px;
+    background: rgba(0, 20, 0, 0.8);
+    border: 1px solid #00ff00;
+    border-radius: 4px;
+    color: #00ff00;
+    font-family: 'Courier New', monospace;
+    font-size: 1rem;
+    transition: all 0.3s;
+}
+
+.form-field input:focus,
+.form-field textarea:focus,
+.form-field select:focus {
+    outline: none;
+    box-shadow: 0 0 10px #00ff00;
+    background: rgba(0, 30, 0, 0.9);
+}
+
+.form-field input::placeholder,
+.form-field textarea::placeholder {
+    color: #006600;
+}
+
+.form-field label {
+    position: absolute;
+    left: 12px;
+    top: 12px;
+    color: #00aa00;
+    font-size: 1rem;
+    pointer-events: none;
+    transition: all 0.3s;
+    background: transparent;
+    padding: 0 4px;
+}
+
+.form-field input:focus~label,
+.form-field input:not(:placeholder-shown)~label,
+.form-field textarea:focus~label,
+.form-field textarea:not(:placeholder-shown)~label,
+.form-field select:focus~label,
+.form-field select:not([value=""])~label {
+    top: -10px;
+    left: 8px;
+    font-size: 0.85rem;
+    background: #000;
+    color: #00ff00;
+    text-shadow: 0 0 5px #00ff00;
+}
+
+/* Checkbox styles */
+.form-check {
+    margin-bottom: 1rem;
+}
+
+.form-check-input {
+    width: 20px;
+    height: 20px;
+    border: 1px solid #00ff00;
+    background: rgba(0, 20, 0, 0.8);
+    cursor: pointer;
+}
+
+.form-check-input:checked {
+    background-color: #00ff00;
+    border-color: #00ff00;
+    box-shadow: 0 0 10px #00ff00;
+}
+
+.form-check-label {
+    color: #00ff00;
+    margin-left: 0.5rem;
+    cursor: pointer;
+}
+
+/* Matrix button */
+.matrix-btn {
+    width: 100%;
+    padding: 14px;
+    background: transparent;
+    border: 2px solid #00ff00;
+    border-radius: 4px;
+    color: #00ff00;
+    font-family: 'Courier New', monospace;
+    font-size: 1.1rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-top: 1rem;
+}
+
+.matrix-btn:hover {
+    background: #00ff00;
+    color: #000;
+    box-shadow: 0 0 20px #00ff00;
+    transform: translateY(-2px);
+}
+
+.matrix-btn:active {
+    transform: translateY(0);
+}
+
+.matrix-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.matrix-btn:disabled:hover {
+    background: transparent;
+    color: #00ff00;
+    transform: none;
+}
+
+/* Matrix button variants */
+.matrix-btn-secondary {
+    width: 100%;
+    padding: 14px;
+    background: transparent;
+    border: 2px solid #00aa00;
+    border-radius: 4px;
+    color: #00aa00;
+    font-family: 'Courier New', monospace;
+    font-size: 1.1rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-top: 1rem;
+}
+
+.matrix-btn-secondary:hover {
+    background: #00aa00;
+    color: #000;
+    box-shadow: 0 0 15px #00aa00;
+    transform: translateY(-2px);
+}
+
+.matrix-btn-secondary:active {
+    transform: translateY(0);
+}
+
+.matrix-btn-danger {
+    width: 100%;
+    padding: 14px;
+    background: transparent;
+    border: 2px solid #ff0000;
+    border-radius: 4px;
+    color: #ff0000;
+    font-family: 'Courier New', monospace;
+    font-size: 1.1rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-top: 1rem;
+}
+
+.matrix-btn-danger:hover {
+    background: #ff0000;
+    color: #000;
+    box-shadow: 0 0 20px #ff0000;
+    transform: translateY(-2px);
+}
+
+.matrix-btn-danger:active {
+    transform: translateY(0);
+}
+
+.matrix-btn-small {
+    width: auto;
+    padding: 8px 16px;
+    font-size: 0.9rem;
+    letter-spacing: 1px;
+}
+
+.matrix-btn-inline {
+    width: auto;
+    display: inline-block;
+    margin-right: 10px;
+}
+
+/* Output area */
+.matrix-output {
+    padding: 1rem;
+    background: rgba(0, 20, 0, 0.6);
+    border: 1px solid #006600;
+    border-radius: 4px;
+    min-height: 60px;
+    color: #00ff00;
+    font-size: 1.2rem;
+    text-align: center;
+    text-shadow: 0 0 5px #00ff00;
+}
+
+.matrix-output:empty {
+    display: none;
+}
+
+/* Form text and descriptions */
+.form-text {
+    color: #00aa00 !important;
+    font-size: 0.85rem;
+    margin-top: 0.25rem;
+}
+
+.text-danger {
+    color: #ff0000 !important;
+    text-shadow: 0 0 5px #ff0000;
+}
+
+/* Select arrow */
+.form-field select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2300ff00' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 40px;
+}
+
+.form-field select option {
+    background: #001a00;
+    color: #00ff00;
+}
+
+/* ========================================== */
+/* === Зона загрузки файлов === */
+/* ========================================== */
+
+.upload-zone {
+    position: relative;
+    width: 100%;
+    transition: all 0.4s ease-in-out;
+}
+
+.upload-input {
+    position: absolute;
+    width: 0;
+    height: 0;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.upload-dropzone {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 400px;
+    padding: 3rem;
+    background: rgba(0, 20, 0, 0.3);
+    border: 2px dashed #00ff00;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.4s ease-in-out;
+    text-align: center;
+    opacity: 1;
+    transform: scale(1);
+    max-height: 1000px;
+}
+
+.upload-dropzone.hidden {
+    opacity: 0;
+    transform: scale(0.95);
+    pointer-events: none;
+    max-height: 0;
+    min-height: 0;
+    padding: 0;
+    margin: 0;
+    overflow: hidden;
+}
+
+.upload-dropzone:hover,
+.upload-dropzone.dragover {
+    background: rgba(0, 30, 0, 0.5);
+    border-color: #00ff00;
+    box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+}
+
+.upload-dropzone.dragover {
+    border-style: solid;
+    background: rgba(0, 40, 0, 0.7);
+}
+
+.upload-icon {
+    color: #00ff00;
+    margin-bottom: 1.5rem;
+    animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+
+    0%,
+    100% {
+        transform: translateY(0px);
+    }
+
+    50% {
+        transform: translateY(-10px);
+    }
+}
+
+.upload-icon svg {
+    width: 80px;
+    height: 80px;
+    filter: drop-shadow(0 0 10px #00ff00);
+}
+
+.upload-title {
+    font-size: 1.8rem;
+    font-weight: bold;
+    color: #00ff00;
+    text-shadow: 0 0 10px #00ff00;
+    margin-bottom: 0.5rem;
+    letter-spacing: 2px;
+}
+
+.upload-subtitle {
+    font-size: 1rem;
+    color: #00cc00;
+    margin-bottom: 2rem;
+}
+
+.matrix-btn-upload {
+    padding: 12px 32px;
+    background: transparent;
+    border: 2px solid #00ff00;
+    border-radius: 4px;
+    color: #00ff00;
+    font-family: 'Courier New', monospace;
+    font-size: 1rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+.matrix-btn-upload:hover {
+    background: #00ff00;
+    color: #000;
+    box-shadow: 0 0 20px #00ff00;
+    transform: translateY(-2px);
+}
+
+/* Информация о выбранном файле */
+.file-selected {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    padding: 2rem;
+    background: rgba(0, 20, 0, 0.6);
+    border: 1px solid #00ff00;
+    border-radius: 8px;
+    box-shadow: 0 0 15px rgba(0, 255, 0, 0.2);
+    opacity: 0;
+    transform: translateY(20px);
+    max-height: 0;
+    overflow: hidden;
+    transition: all 0.4s ease-in-out;
+}
+
+.file-selected.visible {
+    opacity: 1;
+    transform: translateY(0);
+    max-height: 1000px;
+}
+
+.file-info-content {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.file-icon {
+    color: #00ff00;
+    flex-shrink: 0;
+    position: relative;
+    width: 80px;
+    height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid #00ff00;
+    border-radius: 8px;
+    background: rgba(0, 20, 0, 0.5);
+    overflow: hidden;
+}
+
+.file-icon svg {
+    width: 48px;
+    height: 48px;
+    filter: drop-shadow(0 0 5px #00ff00);
+}
+
+/* Превью изображения/видео */
+.file-preview-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 6px;
+}
+
+/* Иконка play для видео превью */
+.file-preview-play {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 32px;
+    height: 32px;
+    background: rgba(0, 255, 0, 0.8);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #000;
+    font-size: 14px;
+    padding-left: 3px;
+    box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+    pointer-events: none;
+}
+
+.file-details-container {
+    flex-grow: 1;
+}
+
+.file-name {
+    font-size: 1.2rem;
+    font-weight: bold;
+    color: #00ff00;
+    margin-bottom: 0.25rem;
+    word-break: break-word;
+}
+
+.file-details {
+    font-size: 0.9rem;
+    color: #00aa00;
+}
+
+.file-remove-btn {
+    width: 32px;
+    height: 32px;
+    background: transparent;
+    border: 1px solid #ff0000;
+    border-radius: 50%;
+    color: #ff0000;
+    font-size: 1.2rem;
+    cursor: pointer;
+    transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.file-remove-btn:hover {
+    background: #ff0000;
+    color: #000;
+    box-shadow: 0 0 10px #ff0000;
+}
+
+/* Прогресс-бар */
+.upload-progress {
+    width: 100%;
+}
+
+.progress-bar-container {
+    width: 100%;
+    height: 30px;
+    background: rgba(0, 20, 0, 0.8);
+    border: 1px solid #00ff00;
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: inset 0 0 10px rgba(0, 255, 0, 0.2);
+}
+
+.progress-bar-fill {
+    position: relative;
+    height: 100%;
+    background: linear-gradient(90deg, #00ff00, #00cc00);
+    width: 0%;
+    transition: width 0.5s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    box-shadow: 0 0 15px #00ff00;
+}
+
+/* Текст процента внутри прогресс-бара */
+.progress-percent {
+    color: #000;
+    font-weight: bold;
+    font-size: 14px;
+    z-index: 1;
+    text-shadow: none;
+    padding: 0 6px;
+}
+
+/* Текст текущего этапа обработки */
+.progress-stage {
+    margin-top: 10px;
+    text-align: center;
+    color: #00ff00;
+    font-size: 14px;
+    font-weight: bold;
+    text-shadow: 0 0 5px #00ff00;
+    min-height: 20px;
+    animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.7;
+    }
+}
+
+/* Ошибка загрузки */
+.upload-error {
+    padding: 1rem;
+    background: rgba(100, 0, 0, 0.3);
+    border: 1px solid #ff0000;
+    border-radius: 4px;
+    color: #ff0000;
+    text-align: center;
+    margin-top: 1rem;
+}
+
+/* ========================================== */
+/* === Информационный блок === */
+/* ========================================== */
+
+.how-it-works-section {
+    margin-top: 3rem;
+    padding: 2rem;
+    background: rgba(0, 0, 0, 0.8);
+    border: 1px solid #00ff00;
+    border-radius: 8px;
+    box-shadow: 0 0 15px rgba(0, 255, 0, 0.2);
+}
+
+.section-title {
+    font-size: 1.8rem;
+    font-weight: bold;
+    color: #00ff00;
+    text-shadow: 0 0 10px #00ff00;
+    text-align: center;
+    margin-bottom: 2rem;
+    letter-spacing: 1px;
+}
+
+.steps-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 2rem;
+}
+
+.step-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 1.5rem;
+    background: rgba(0, 20, 0, 0.3);
+    border: 1px solid #00aa00;
+    border-radius: 8px;
+    transition: all 0.3s;
+}
+
+.step-item:hover {
+    background: rgba(0, 30, 0, 0.5);
+    border-color: #00ff00;
+    box-shadow: 0 0 15px rgba(0, 255, 0, 0.2);
+    transform: translateY(-5px);
+}
+
+.step-icon {
+    color: #00ff00;
+    margin-bottom: 1rem;
+}
+
+.step-icon svg {
+    width: 48px;
+    height: 48px;
+    filter: drop-shadow(0 0 5px #00ff00);
+}
+
+.step-number {
+    font-size: 1.2rem;
+    font-weight: bold;
+    color: #00ff00;
+    margin-bottom: 0.5rem;
+}
+
+.step-description {
+    font-size: 0.95rem;
+    color: #00cc00;
+    line-height: 1.5;
+}
+
+/* Версия системы */
+.version-info {
+    text-align: center;
+    margin-top: 2rem;
+    padding: 1rem;
+    color: #00aa00;
+    font-size: 0.85rem;
+}
+
+.version-info p {
+    margin: 0;
+}
+
+/* Responsive для мобильных устройств */
+@media (max-width: 768px) {
+    .upload-dropzone {
+        min-height: 300px;
+        padding: 2rem 1rem;
+    }
+
+    .upload-icon svg {
+        width: 60px;
+        height: 60px;
+    }
+
+    .upload-title {
+        font-size: 1.4rem;
+    }
+
+    .upload-subtitle {
+        font-size: 0.9rem;
+    }
+
+    .steps-container {
+        grid-template-columns: 1fr;
+    }
+
+    .file-info-content {
+        flex-direction: column;
+        text-align: center;
+    }
+}
+
+/* Спиннер кнопки */
+.button-spinner {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.button-spinner .spinner {
+    animation: rotate 2s linear infinite;
+}
+
+.button-spinner .spinner .path {
+    stroke: #00ff00;
+    stroke-linecap: round;
+    animation: dash 1.5s ease-in-out infinite;
+}
+
+@keyframes rotate {
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes dash {
+    0% {
+        stroke-dasharray: 1, 150;
+        stroke-dashoffset: 0;
+    }
+
+    50% {
+        stroke-dasharray: 90, 150;
+        stroke-dashoffset: -35;
+    }
+
+    100% {
+        stroke-dasharray: 90, 150;
+        stroke-dashoffset: -124;
+    }
+}
