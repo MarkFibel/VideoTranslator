@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 class ESPnetFastSpeech2HiFiGANModel(BaseSpeechGenerationModel):
     def __init__(self, model_name="espnet/fastspeech2_conformer_with_hifigan", device="cpu"):
         super().__init__()
-        logger.info(f"Loading ESPnet FastSpeech2 + HiFi-GAN pipeline: {model_name}")
+        logger.info(f"Loading: {model_name}")
         self.pipe = pipeline("text-to-audio", model=model_name, device=device)
         self.device = device
 
@@ -43,7 +43,6 @@ class ESPnetFastSpeech2HiFiGANModel(BaseSpeechGenerationModel):
         t0 = time.time()
         result = self.pipe(text)
 
-        # result обычно list с одним словарем {"audio": np.array, "sampling_rate": int}
         if isinstance(result, list) and "audio" in result[0]:
             waveform = result[0]["audio"]
             sampling_rate = result[0].get("sampling_rate", 22050)
@@ -51,7 +50,6 @@ class ESPnetFastSpeech2HiFiGANModel(BaseSpeechGenerationModel):
             waveform = result["audio"]
             sampling_rate = result.get("sampling_rate", 22050)
         else:
-            # на всякий случай
             waveform = np.array(result)
             sampling_rate = 22050
 
@@ -63,12 +61,10 @@ class ESPnetFastSpeech2HiFiGANModel(BaseSpeechGenerationModel):
         wav_path = os.path.join(temp_dir, f"{output_basename}.wav")
         mp3_path = os.path.join(temp_dir, f"{output_basename}.mp3")
 
-        # Сохраняем WAV
         if sampling_rate is None:
             sampling_rate = 22050
         wvfile.write(wav_path, rate=sampling_rate, data=waveform_int16)
 
-        # Сохраняем MP3
         audio_segment = AudioSegment(
             waveform_int16.tobytes(),
             frame_rate=sampling_rate,
@@ -86,4 +82,5 @@ class ESPnetFastSpeech2HiFiGANModel(BaseSpeechGenerationModel):
             "wav_path": wav_path,
             "mp3_path": mp3_path,
             "timings": timings
+
         }
