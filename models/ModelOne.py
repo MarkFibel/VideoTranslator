@@ -24,7 +24,7 @@ class BaseSpeechGenerationModel:
 class ESPnetVITSModel(BaseSpeechGenerationModel):
     def __init__(self, model_name="espnet/kan-bayashi_ljspeech_vits"):
         super().__init__()
-        logger.info(f"Loading ESPnet VITS model: {model_name}")
+        logger.info(f"Loading: {model_name}")
         self.model = Text2Speech.from_pretrained(model_name)
 
     def __call__(self, text: str, output_basename: str, temp_dir=settings.TEMP_DIR):
@@ -34,7 +34,6 @@ class ESPnetVITSModel(BaseSpeechGenerationModel):
         try:
             # Preprocessing
             t0 = time.time()
-            # В ESPnet текст обрабатывается внутри модели
             timings["preprocessing"] = time.time() - t0
 
             # Inference
@@ -67,4 +66,5 @@ class ESPnetVITSModel(BaseSpeechGenerationModel):
             }
         except Exception as e:
             logger.error(f"ESPnet VITS error: {e}")
+
             return {"status": False, "error": str(e), "source_text": text}
