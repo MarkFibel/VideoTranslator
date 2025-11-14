@@ -1,0 +1,1 @@
+numpy, scipy, pydub, transformers, espnet, espnet_model_zoo, torch, torchaudio, torchvision, nltk
