@@ -1,0 +1,9 @@
+Лицензия для 1 модели
+https://huggingface.co/espnet/kan-bayashi_ljspeech_vits/blob/main/README.md
+
+Лицензия для 2 модели
+https://huggingface.co/microsoft/speecht5_tts
+(Пролистать вниз Licence:MIT)
+
+Лицензия для 3 модели
+https://huggingface.co/espnet/fastspeech2_conformer_with_hifigan/blob/main/README.md
