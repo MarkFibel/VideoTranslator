@@ -14,10 +14,6 @@ logger = logging.getLogger(__name__)
 
 
 class SpeechT5GenerationModel:
-    """
-    SpeechT5 (MIT License)
-    """
-
     def __init__(
         self,
         model_name="microsoft/speecht5_tts",
@@ -82,3 +78,4 @@ class SpeechT5GenerationModel:
         except Exception as e:
             logger.error(f"SpeechT5 error: {e}")
             return {"status": False, "error": str(e)}
+
