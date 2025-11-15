@@ -1,0 +1,19 @@
+# Дефолтные этапы обработки для простых сервисов
+# Используется как fallback когда специфичный конфиг не найден
+
+service_name: "default"
+description: "Default processing stages for simple services"
+
+stages:
+  - id: "processing"
+    progress: 50
+    supports_substeps: true
+    timeout_seconds: 300
+    description: "Main processing stage"
+
+# Опциональные настройки
+settings:
+  auto_initialize: true      # Автоматически добавлять initializing этап
+  auto_complete: true        # Автоматически добавлять complete этап
+  validate_sequence: true    # Проверять корректность последовательности
+  allow_custom_stages: true  # Разрешить сервису добавлять свои этапы

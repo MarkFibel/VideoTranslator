@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SSE Upload Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .progress-container {
+            margin: 20px 0;
+            display: none;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background-color: #f0f0f0;
+            border-radius: 15px;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background-color: #4caf50;
+            width: 0%;
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+        
+        .log {
+            background-color: #f5f5f5;
+            border: 1px solid #ddd;
+            padding: 10px;
+            height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+        }
+        
+        .upload-form {
+            border: 2px dashed #ccc;
+            padding: 20px;
+            text-align: center;
+            margin: 20px 0;
+        }
+        
+        .status {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        
+        .status.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .status.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .status.processing {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+    </style>
+</head>
+<body>
+    <h1>SSE Upload Test</h1>
+    
+    <div class="upload-form">
+        <h3>Выберите файл для загрузки</h3>
+        <input type="file" id="fileInput" accept="video/*">
+        <br><br>
+        <button onclick="startUpload()" id="uploadBtn">Загрузить файл</button>
+    </div>
+    
+    <div class="progress-container" id="progressContainer">
+        <h3>Прогресс обработки</h3>
+        <div class="progress-bar">
+            <div class="progress-fill" id="progressFill">0%</div>
+        </div>
+        <div id="stageLabel" style="margin-top: 10px; font-weight: bold;">Ожидание...</div>
+    </div>
+    
+    <div class="status" id="statusMessage" style="display: none;">
+        Статус обработки
+    </div>
+    
+    <h3>Лог событий SSE</h3>
+    <div class="log" id="logArea">Ожидание событий...\n</div>
+    
+    <script>
+        let eventSource = null;
+        
+        function log(message) {
+            const logArea = document.getElementById('logArea');
+            const timestamp = new Date().toLocaleTimeString();
+            logArea.textContent += `[${timestamp}] ${message}\n`;
+            logArea.scrollTop = logArea.scrollHeight;
+        }
+        
+        function showStatus(message, type) {
+            const statusEl = document.getElementById('statusMessage');
+            statusEl.textContent = message;
+            statusEl.className = `status ${type}`;
+            statusEl.style.display = 'block';
+        }
+        
+        // Словарь человекочитаемых названий этапов
+        const stageLabels = {
+            'initializing': 'Инициализация',
+            'file_saved': 'Файл сохранен',
+            'starting_processing': 'Запуск обработки',
+            'extracting_audio': 'Извлечение аудиодорожки',
+            'recognizing_speech': 'Распознавание речи',
+            'translating_text': 'Перевод текста',
+            'generating_tts': 'Генерация озвучки',
+            'processing_frames': 'Обработка видеокадров',
+            'assembling_video': 'Сборка финального видео',
+            'complete': 'Обработка завершена'
+        };
+        
+        function updateProgress(progress, stage) {
+            const progressFill = document.getElementById('progressFill');
+            const stageLabel = document.getElementById('stageLabel');
+            
+            progressFill.style.width = `${progress}%`;
+            progressFill.textContent = `${progress}%`;
+            
+            const label = stageLabels[stage] || stage || 'Обработка...';
+            stageLabel.textContent = label;
+        }
+        
+        async function startUpload() {
+            const fileInput = document.getElementById('fileInput');
+            const uploadBtn = document.getElementById('uploadBtn');
+            const progressContainer = document.getElementById('progressContainer');
+            
+            if (!fileInput.files[0]) {
+                alert('Выберите файл для загрузки');
+                return;
+            }
+            
+            const file = fileInput.files[0];
+            log(`Начало загрузки файла: ${file.name} (${file.size} bytes)`);
+            
+            // Показываем прогресс-бар
+            progressContainer.style.display = 'block';
+            uploadBtn.disabled = true;
+            showStatus('Начинается загрузка...', 'processing');
+            
+            try {
+                // Отправляем POST запрос с файлом
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                const response = await fetch('/files/upload/stream', {
+                    method: 'POST',
+                    body: formData,
+                    credentials: 'include'
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                log(`✅ Connection established. Reading SSE stream...`);
+                console.log('Response headers:', response.headers);
+                
+                // Читаем SSE поток
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let chunkCount = 0;
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    
+                    if (done) {
+                        log('🏁 Stream finished');
+                        break;
+                    }
+                    
+                    chunkCount++;
+                    log(`📦 Chunk ${chunkCount} received: ${value.length} bytes`);
+                    
+                    // Декодируем chunk
+                    const decoded = decoder.decode(value, { stream: true });
+                    log(`📝 Decoded chunk preview: ${decoded.substring(0, 100)}`);
+                    buffer += decoded;
+                    
+                    // Обрабатываем полные SSE сообщения
+                    const lines = buffer.split('\n\n');
+                    buffer = lines.pop(); // Сохраняем неполное сообщение
+                    
+                    log(`🔍 Processing ${lines.length} complete SSE messages from buffer`);
+                    
+                    for (const message of lines) {
+                        if (!message.trim()) {
+                            log(`⏭️ Skipping empty message`);
+                            continue;
+                        }
+                        
+                        log(`\n📬 Processing SSE message:\n${message.substring(0, 200)}`);
+                        
+                        try {
+                            const eventLines = message.split('\n');
+                            let eventType = 'message';
+                            let eventData = '';
+                            
+                            for (const line of eventLines) {
+                                if (line.startsWith('event: ')) {
+                                    eventType = line.substring(7);
+                                    log(`  🏷️ Event type: ${eventType}`);
+                                } else if (line.startsWith('data: ')) {
+                                    eventData = line.substring(6);
+                                    log(`  📄 Event data: ${eventData.substring(0, 100)}`);
+                                }
+                            }
+                            
+                            if (!eventData) {
+                                log(`Warning: Empty eventData, skipping`);
+                                continue;
+                            }
+                            
+                            log(`Raw SSE data: ${eventData.substring(0, 200)}`);
+                            
+                            const data = JSON.parse(eventData);
+                            
+                            log(`📨 Event [${eventType}]: progress=${data.progress}, stage=${data.stage}`);
+                            console.log('Full event data:', data);
+                            
+                            if (eventType === 'progress') {
+                                log(`▶️ Processing progress event: ${data.progress}% at stage ${data.stage}`);
+                                updateProgress(data.progress, data.stage);
+                                const label = stageLabels[data.stage] || data.stage;
+                                showStatus(`${data.progress}% - ${label}`, 'processing');
+                            } else if (eventType === 'complete') {
+                                log(`✅ Complete event received`);
+                                updateProgress(100, 'complete');
+                                showStatus('Файл успешно обработан!', 'success');
+                                uploadBtn.disabled = false;
+                            } else if (eventType === 'error') {
+                                const errorMsg = data.error?.message || data.error_message || 'Unknown error';
+                                log(`❌ Error: ${errorMsg}`);
+                                showStatus(`Ошибка: ${errorMsg}`, 'error');
+                                uploadBtn.disabled = false;
+                                break;
+                            }
+                        } catch (e) {
+                            log(`Error parsing SSE message: ${e.message}`);
+                        }
+                    }
+                }
+                
+            } catch (error) {
+                log(`Upload error: ${error.message}`);
+                showStatus(`Ошибка загрузки: ${error.message}`, 'error');
+                uploadBtn.disabled = false;
+            }
+        }
+        
+        // Cleanup при закрытии страницы
+        window.addEventListener('beforeunload', () => {
+            if (eventSource) {
+                eventSource.close();
+            }
+        });
+    </script>
+</body>
+</html>

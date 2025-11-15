@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ru">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}FastAPI + Stimulus{% endblock %}</title>
+
+    <!-- Подключаем Bootstrap CSS -->
+    <link href="{{ url_for('static', path='css/bootstrap.min.css') }}" rel="stylesheet">
+
+    {% block head %}{% endblock %}
+</head>
+
+<body>
+
+    <div class="container mt-4">
+        {% block content %}{% endblock %}
+    </div>
+
+    <!-- Подключаем Bootstrap JS (bundle) -->
+    <script src="{{ url_for('static', path='js/bootstrap.bundle.min.js') }}"></script>
+
+</body>
+
+</html>

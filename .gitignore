@@ -3,5 +3,11 @@ venv/
 .env
 var/
 __pycache__/
-dev
-.github
+local
+docs/dev
+.github/
+.DS_Store
+mdr_*
+data/
+dev/*
+secrets/
