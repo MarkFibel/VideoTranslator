@@ -3,3 +3,5 @@ venv/
 .env
 var/
 __pycache__/
+dev
+.github
