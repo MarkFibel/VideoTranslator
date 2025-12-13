@@ -1,1 +1,1 @@
-python3 start_ml.py --source "var/data_ocr/test.vi.deo.mp4" --temp_dir "var/tmp"
+python3 start_ml.py --source "var/data_ocr/small_sample.mp4" --temp_dir "var/tmp"

@@ -1,7 +1,7 @@
 from transformers import FSMTForConditionalGeneration, FSMTTokenizer
 import torch
 from tqdm import tqdm
-from .utils.utils import Response
+from ..utils import Response
 
 
 class Translator:

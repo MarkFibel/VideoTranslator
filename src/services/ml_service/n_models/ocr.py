@@ -3,7 +3,7 @@ from doctr.models import ocr_predictor
 import torch
 import json
 from tqdm import tqdm
-from .utils.utils import Response
+from ..utils import Response
 
 class OCR:
     def __init__(self, device: str = None):

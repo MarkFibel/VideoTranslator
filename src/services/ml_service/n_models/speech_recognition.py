@@ -1,5 +1,5 @@
 import whisper
-from .utils.utils import Response
+from ..utils import Response
 class SimpleWhisper:
     """
     Простой класс для инициализации модели Whisper и распознавания аудио.

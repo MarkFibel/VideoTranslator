@@ -1,59 +1,26 @@
 import argparse
 import os
 import shutil
-from time import sleep, perf_counter
 from .utils.video import extract_frames, extract_audio, create_video_with_new_audio
 from .utils.audio import wav_to_mp3
-from .utils.image import translate_images, draw_translations_on_image
-from .utils.utils import extract_name, unique_indices, fill_with_unique, save_json, load_json, get_image_paths
-from .translator import Translator, UniversalTranslator
+from .utils.image import translate_images
+from .utils.utils import save_json, load_json, get_image_paths, translate_ocr_results, Response
+from .translator import UniversalTranslator
 from .speech_recognition import SimpleWhisper
 from .ocr import OCR
 from .audio_generator import TextToSpeech
 import logging
-from doctr.io import Document
-import json
 from contextlib import contextmanager
 from time import perf_counter
 
 @contextmanager
 def log_duration(message: str):
+    logger.info(f"⌛{message}")
     start = perf_counter()
     yield
     end = perf_counter()
-    logger.info(f"⌛{message} | Время выполнения: {end - start:.4f} сек")
+    logger.info(f"Время выполнения: {end - start:.4f} сек")
 
-def translate_ocr_results(translator, data):
-    start = perf_counter()
-
-    # карта уникальных страниц (длина == data)
-    unique_map = fill_with_unique(data)
-    unique_idxs = sorted(set(unique_map))
-
-    texts = []
-    for idx in unique_idxs:
-        for item in data[idx]:
-            texts.append(item["text"])
-
-    # 2. Переводим
-    translations = translator.batch_translate(texts)
-
-    # 3. Назначаем переводы уникальным страницам
-    t_idx = 0
-    for idx in unique_idxs:
-        for item in data[idx]:
-            item["translation"] = translations[t_idx]
-            t_idx += 1
-
-    # 4. Копируем текст в дубликаты
-    for i, page in enumerate(data):
-        original_idx = unique_map[i]
-        for item, orig_item in zip(page, data[original_idx]):
-            item["translation"] = orig_item["translation"]
-
-    logger.info(f"⌛ Translator.batch_translate выполнен за {perf_counter() - start:.4f} сек")
-
-    return data
 
 
 TRANSLATOR_NAME = "glazzova/translation_en_ru"
@@ -106,16 +73,34 @@ class MLService:
         translated_mp3 = os.path.join(base_dir, f"{self.audio_translate_name}.mp3")
 
         with log_duration("SimpleWhisper.transcribe"):
-            transcript = self.recognizer.transcribe(extract_audio_path)
-
+            resp: Response = self.recognizer.transcribe(extract_audio_path)
+            if resp.status is False:
+                return Response(False, resp.error, None)
+            transcript = resp.result
+            path = os.path.join(temp_dir, name, f"audio_text_transcript.txt")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(transcript)
+            
         with log_duration("Translator.translate"):
-            translation = self.translator.translate(transcript)
+            resp: Response = self.translator.translate(transcript)
+            if resp.status is False:
+                return Response(False, resp.error, None)
+            translation = resp.result
+            path = os.path.join(temp_dir, name, f"audio_text_translation.txt")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(translation)
 
         with log_duration("TextToSpeech.synthesize"):
-            self.generator.synthesize(translation, output_path=translated_wav)
+            resp: Response = self.generator.synthesize(translation, output_path=translated_wav)
+            if resp.status is False:
+                return Response(False, resp.error, None)
 
         with log_duration("wav_to_mp3"):
-            wav_to_mp3(translated_wav, translated_mp3)
+            resp: Response = wav_to_mp3(translated_wav, translated_mp3)
+            if resp.status is False:
+                return Response(False, resp.error, None)
+        
+        return Response(True, None, None)
 
     def _video_process(self, path, temp_dir, name):
         frames_dir = os.path.join(temp_dir, name, 'frames')
@@ -124,20 +109,34 @@ class MLService:
         ocr_out_path = os.path.join(temp_dir, name, f'ocr.json')
 
         with log_duration("OCR"):
-            results = self.ocr.batch(images)
-            self.ocr.save_results_to_json(results, ocr_out_path)
+            resp: Response = self.ocr.batch(images)
+            if resp.status is False:
+                return Response(False, resp.error, None)
+            results = resp.result
+
+            resp: Response = self.ocr.save_results_to_json(results, ocr_out_path)
+            if resp.status is False:
+                return Response(False, resp.error, None)
     
         with log_duration("Translate"):
             results = load_json(ocr_out_path)
-            translated_data = translate_ocr_results(self.translator, results)
+            resp: Response = translate_ocr_results(self.translator, results)
+            if resp.status is False:
+                return Response(False, resp.error, None)
+            translated_data = resp.result
+            save_json(translated_data, os.path.join(temp_dir, name, 'video_text.json'))
 
         with log_duration('Re translate'):
-            translate_images(
+            resp: Response = translate_images(
                 images,
                 translated_data,
                 output_dir=output_dir,
                 font_path="arial.ttf"
             )
+            if resp.status is False:
+                return Response(False, resp.error, None) 
+        
+        return Response(True, None, None)
 
     def run(self, path, temp_dir):
         # Основная логика обработки файла
@@ -153,12 +152,22 @@ class MLService:
         frames_output_dir = os.path.join(temp_dir, name, 'frames')
 
         with log_duration("Предобработка"):
-            extract_audio(path, extract_audio_path)
-            extract_frames(path, frames_output_dir)            
+            resp: Response = extract_audio(path, extract_audio_path)
+            if resp.status is False:
+                return Response(False, resp.error, None) 
+            
+            resp: Response = extract_frames(path, frames_output_dir)   
+            if resp.status is False:
+                return Response(False, resp.error, None)          
 
         with log_duration("Обработка"):
-            self._audio_process(path, temp_dir, name)
-            self._video_process(path, temp_dir, name)
+            resp: Response = self._audio_process(path, temp_dir, name)
+            if resp.status is False:
+                return Response(False, resp.error, None) 
+            
+            resp: Response = self._video_process(path, temp_dir, name)
+            if resp.status is False:
+                return Response(False, resp.error, None) 
 
         images_dir=os.path.join(temp_dir, name, 'frames_translated')
         original_video_path = path
@@ -166,14 +175,17 @@ class MLService:
         output_video_path=os.path.join(temp_dir, f'{name}.mp4')
 
         with log_duration("Постобработка"):
-            create_video_with_new_audio(    
+            resp: Response = create_video_with_new_audio(    
                 images_dir=images_dir,
                 original_video_path=original_video_path,
                 new_audio_path=new_audio_path,
                 output_video_path=output_video_path
             )
+            if resp.status is False:
+                return Response(False, resp.error, None) 
 
         end_process_time = perf_counter()
+        # shutil.copytree(os.path.join(temp_dir, name), os.path.join(temp_dir, name + '_example'))
         logger.info(f"✅Обработка файла '{path}' завершена. Общее время {end_process_time - start_process_time:.4f}")
         try:
             shutil.rmtree(dir_path)
@@ -182,6 +194,8 @@ class MLService:
             logger.info(f"❌Директория '{dir_path}' не найдена.")
         except Exception as e:
             logger.info(f"❌Ошибка при удалении директории: {e}")
+        
+        return Response(True, None, None)
 
 
 

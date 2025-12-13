@@ -1,7 +1,7 @@
 from transformers import VitsModel, AutoTokenizer
 import torch
 import scipy.io.wavfile as wavfile
-from .utils.utils import Response
+from ..utils import Response
 
 class TextToSpeech:
     def __init__(self, model_name="facebook/mms-tts-rus", device=None):

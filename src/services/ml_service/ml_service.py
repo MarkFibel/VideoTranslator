@@ -5,75 +5,80 @@ import os
 import asyncio
 import shutil
 import logging
+from typing import AsyncIterator
 from src.services.base_service import BaseService
-from src.services.ml_service.ml_pipelines import (get_ocr,
-                                                  get_spech_recognize,
-                                                  get_translate,
-                                                  get_tts)
-from src.services.ml_service.utils import (split_video_to_frames,
-                                           extract_audio_from_video,
-                                           images_to_video_with_audio_auto_fps,
-                                           tr_frames,
-                                           rename_file)
 from src.config.services.ml_config import settings, Settings
+from . import utils as service_utils
+from . import n_models as models
+from contextlib import contextmanager
+from time import perf_counter
 
+@contextmanager
+def log_duration(message: str):
+    logger.info(f"⌛{message}")
+    start = perf_counter()
+    yield
+    end = perf_counter()
+    logger.info(f"Время выполнения: {end - start:.4f} сек")
 
 
 
 logger = logging.getLogger(__name__)
 
-def copy_file_to_directory(source_path, target_directory):
-    """
-    Копирует файл из source_path в target_directory.
+# def copy_file_to_directory(source_path, target_directory):
+#     """
+#     Копирует файл из source_path в target_directory.
     
-    :param source_path: путь к исходному файлу
-    :param target_directory: путь к целевой директории
-    """
-    try:
-        # Проверяем, существует ли исходный файл
-        if not os.path.isfile(source_path):
-            print(f"Исходный файл не найден: {source_path}")
-            return
+#     :param source_path: путь к исходному файлу
+#     :param target_directory: путь к целевой директории
+#     """
+#     try:
+#         # Проверяем, существует ли исходный файл
+#         if not os.path.isfile(source_path):
+#             print(f"Исходный файл не найден: {source_path}")
+#             return
         
-        # Проверяем, существует ли целевая директория
-        if not os.path.isdir(target_directory):
-            print(f"Целевая директория не найдена, создаем: {target_directory}")
-            os.makedirs(target_directory)
+#         # Проверяем, существует ли целевая директория
+#         if not os.path.isdir(target_directory):
+#             print(f"Целевая директория не найдена, создаем: {target_directory}")
+#             os.makedirs(target_directory)
         
-        # Формируем путь для файла в целевой директории
-        destination_path = os.path.join(target_directory, os.path.basename(source_path))
+#         # Формируем путь для файла в целевой директории
+#         destination_path = os.path.join(target_directory, os.path.basename(source_path))
         
-        # Копируем файл
-        shutil.copy(source_path, destination_path)
-        print(f"Файл успешно скопирован в: {destination_path}")
-    except Exception as e:
-        print(f"Произошла ошибка: {e}")
+#         # Копируем файл
+#         shutil.copy(source_path, destination_path)
+#         print(f"Файл успешно скопирован в: {destination_path}")
+#     except Exception as e:
+#         print(f"Произошла ошибка: {e}")
 
-def move_file(source_dir, dest_dir, filename):
-    source_path = os.path.join(source_dir, filename)
-    dest_path = os.path.join(dest_dir, filename)
+# def move_file(source_dir, dest_dir, filename):
+#     source_path = os.path.join(source_dir, filename)
+#     dest_path = os.path.join(dest_dir, filename)
     
-    try:
-        shutil.move(source_path, dest_path)
-        print(f"Файл '{filename}' успешно перемещен из '{source_dir}' в '{dest_dir}'.")
-    except FileNotFoundError:
-        print(f"Файл '{filename}' не найден в директории '{source_dir}'.")
-    except Exception as e:
-        print(f"Произошла ошибка: {e}")
+#     try:
+#         shutil.move(source_path, dest_path)
+#         print(f"Файл '{filename}' успешно перемещен из '{source_dir}' в '{dest_dir}'.")
+#     except FileNotFoundError:
+#         print(f"Файл '{filename}' не найден в директории '{source_dir}'.")
+#     except Exception as e:
+#         print(f"Произошла ошибка: {e}")
         
-def clean_directory(directory, allowed_items):
-    for item in os.listdir(directory):
-        item_path = os.path.join(directory, item)
-        if item not in allowed_items:
-            try:
-                if os.path.isfile(item_path) or os.path.islink(item_path):
-                    os.remove(item_path)
-                    print(f"Удалён файл: {item_path}")
-                elif os.path.isdir(item_path):
-                    shutil.rmtree(item_path)
-                    print(f"Удалена папка: {item_path}")
-            except Exception as e:
-                print(f"Ошибка при удалении {item_path}: {e}")
+# def clean_directory(directory, allowed_items):
+#     for item in os.listdir(directory):
+#         item_path = os.path.join(directory, item)
+#         if item not in allowed_items:
+#             try:
+#                 if os.path.isfile(item_path) or os.path.islink(item_path):
+#                     os.remove(item_path)
+#                     print(f"Удалён файл: {item_path}")
+#                 elif os.path.isdir(item_path):
+#                     shutil.rmtree(item_path)
+#                     print(f"Удалена папка: {item_path}")
+#             except Exception as e:
+#                 print(f"Ошибка при удалении {item_path}: {e}")
+
+
 
 class MLService(BaseService):
     """
@@ -103,152 +108,30 @@ class MLService(BaseService):
             temp_dir (str): Путь к временной директории для хранения промежуточных данных.
         """
         super().__init__()
-        self.translate = get_translate()
-        self.spech_recognize = get_spech_recognize()
-        self.ocr = get_ocr()
-        self.tts = get_tts()
+        self.audio_extract_name = 'audio_extract'
+        self.audio_translate_name = 'audio_translate'
+        self.audio_results_name = 'audio_results'
+
+        self.video_ocr_name = 'video_ocr'
+        self.video_translate_name = 'video_translate'
+
+        with log_duration("INIT models"):
+            self._init_models()
+            
         self.temp_dir = temp_dir
 
-    async def execute_stream(self, data: dict):
-        """
-        Асинхронный метод для запуска пайплайна с SSE (streaming).
-        """
-        self._start_tracking()
+    def _init_models(self):
+        with log_duration("UniversalTranslator.__init__"):
+            self.translator = models.UniversalTranslator(settings.TRANSLATOR_NAME, device=settings.TRANSLATOR_DEVICE, model_type=settings.TRANSLATOR_TYPE)
+        
+        with log_duration("SimpleWhisper.__init__"):
+            self.recognizer = models.SimpleWhisper(device=settings.RECOGNIZER_DEVICE, model_name=settings.RECOGNIZER_NAME)
 
-        try:
-            params = data.get("data", {})
-            
-            path = params.get("path", "")
-            name = params.get("name", "")
-            result_dir = params.get("res_dir", "var/results")
-            
-            if not path or not name:
-                yield self.create_error_message(
-                    error_code="INVALID_INPUT",
-                    error_message="Path or name missing",
-                    stage_failed=self._current_stage_id or "initialization"
-                )
-                return
+        with log_duration("TextToSpeech.__init__"):
+            self.generator = models.TextToSpeech()
 
-            # Копируем видео во временную директорию
-            self.next_stage()  # copying_file
-            yield self.get_current_stage_message()
-
-            copy_file_to_directory(path, self.temp_dir)
-            path = os.path.join(self.temp_dir, os.path.basename(path))
-
-            # Основная обработка видео (streaming)
-            async for msg in self.__process_video_stream(path, name, result_dir):
-                yield msg
-
-            # Финальное сообщение об успехе
-            yield self.create_success_message(
-                result={"output_path": os.path.join(result_dir, f"{name}_translated.mp4")}
-            )
-
-        except Exception as e:
-            logging.exception("Ошибка в execute_stream:")
-            yield self.create_error_message(
-                error_code="ML_PROCESSING_FAILED",
-                error_message=str(e),
-                stage_failed=self._current_stage_id or "unknown"
-            )
-
-    async def __process_video_stream(self, path: str, name: str, result_dir: str):
-        """
-        Асинхронная версия пайплайна обработки видео с отправкой прогресса через SSE.
-        """
-        # --- ЭТАП 2: Разбиение видео на кадры ---
-        self.next_stage()  # splitting_frames
-        yield self.get_current_stage_message()
-
-        src_frames_dir = os.path.join(self.temp_dir, f'{name}_src_frames')
-        r = split_video_to_frames(path, src_frames_dir)
-        if not r['status']:
-            raise Exception(r['error'])
-        logging.info(f"✅ Обработано кадров: {r['procced_frames']}")
-        await asyncio.sleep(0)  # чтобы не блокировать event loop
-
-        # --- ЭТАП 3: Извлечение аудио ---
-        self.next_stage()  # extracting_audio
-        yield self.get_current_stage_message()
-
-        src_audio_dir = os.path.join(self.temp_dir, f'{name}.mp3')
-        r = extract_audio_from_video(path, src_audio_dir)
-        if not r['status']:
-            raise Exception(r['error'])
-        logging.info("✅ Аудио успешно извлечено")
-        await asyncio.sleep(0)
-
-        # --- ЭТАП 4: Распознавание речи ---
-        self.next_stage()  # recognizing_speech
-        yield self.get_current_stage_message()
-
-        r = self.spech_recognize(src_audio_dir)
-        if not r['status']:
-            raise Exception(r['error'])
-        text_from_audio = r['text']
-        logging.info("✅ Распознавание речи завершено")
-        await asyncio.sleep(0)
-
-        # --- ЭТАП 5: Перевод текста ---
-        self.next_stage()  # translating_text
-        yield self.get_current_stage_message()
-
-        r = self.translate(text_from_audio)
-        if not r['status']:
-            raise Exception(r['error'])
-        translated_text = r['text']
-        logging.info("✅ Перевод завершён")
-        await asyncio.sleep(0)
-
-        # --- ЭТАП 6: Генерация TTS ---
-        self.next_stage()  # generating_tts
-        yield self.get_current_stage_message()
-
-        translated_audio_dir = f'{name}_translated'
-        r = self.tts(translated_text, translated_audio_dir)
-        if not r['status']:
-            raise Exception(r['error'])
-        logging.info("✅ Синтез речи завершён")
-        await asyncio.sleep(0)
-
-        # --- ЭТАП 7: Обработка кадров ---
-        self.next_stage()  # processing_frames
-        yield self.get_current_stage_message()
-
-        translated_frames_dir = os.path.join(self.temp_dir, f'{name}_translated_frames')
-        r = tr_frames(src_frames_dir, res_dir=translated_frames_dir)
-        if not r['status']:
-            raise Exception(r['error'])
-        logging.info("✅ Обработка кадров завершена")
-        await asyncio.sleep(0)
-
-        # --- ЭТАП 8: Сборка видео ---
-        self.next_stage()  # assembling_video
-        yield self.get_current_stage_message()
-
-        file_name = os.path.basename(path)
-        r = rename_file(self.temp_dir, file_name, f'temp_{file_name}')
-        if not r['status']:
-            raise Exception(r['error'])
-
-        r = images_to_video_with_audio_auto_fps(
-            translated_frames_dir,
-            os.path.join(self.temp_dir, f'{name}_translated.wav'),
-            os.path.join(self.temp_dir, file_name),
-            path.replace(file_name, f'temp_{file_name}')
-        )
-        if not r['status']:
-            raise Exception(r['error'])
-
-        logging.info("✅ Видео успешно собрано")
-
-        # Очистка временных файлов
-        clean_directory(self.temp_dir, [file_name, f'temp_{file_name}'])
-        logging.info("🧹 Очистка завершена")
-
-        await asyncio.sleep(0)
+        with log_duration("OCR.__init__"):
+            self.ocr = models.OCR(device=settings.OCR_DEVICE)
 
     def execute(self, data: dict) -> dict:
         """
@@ -269,24 +152,24 @@ class MLService(BaseService):
                 - "service" (str): Имя сервиса.
         """
         logger.info(f"MLService.execute called with data: {data}")
-
         message = data.get("message", "No message provided")
         path = data.get("path", '')
-        name = data.get("name", '')
-        result_dir = data.get("res_dir", 'var/results')
 
-        if not path or not name:
+        filename = os.path.basename(path)
+        name = os.path.splitext(filename)[0]
+        dir_path = os.path.join(self.temp_dir, name)
+        os.makedirs(dir_path, exist_ok=True)
+
+        if not path:
             logging.info("❌ Путь или имя видео не указано")
-            return {"status": "error", "message": "Path or name missing"}
-
-        # Копируем видео во временную директорию
-        copy_file_to_directory(path, self.temp_dir)
-        path = os.path.join(self.temp_dir, os.path.basename(path))
+            return {"status": "error", "message": "Path missing"}
 
         # Запуск пайплайна обработки видео
-        r = self.__process_video(path, name, result_dir)
-        if not r['status']:
-            return {"status": "error", "message": r.get('error', 'Processing failed')}
+        with log_duration(f'Обработка видео {name}'):
+            resp: service_utils.Response = self.__process_video(path, name, dir_path)
+
+        if resp.status is False:
+            return {"status": "error", "message": resp.error}
 
         result = {
             "status": "success",
@@ -297,6 +180,130 @@ class MLService(BaseService):
 
         logger.info(f"MLService.execute returning: {result}")
         return result
+
+    async def execute_stream(self, data: dict) -> AsyncIterator[dict]:
+        """
+        Streaming версия execute() для SSE.
+        """
+        self._start_tracking()
+
+        try:
+            path = data["path"]
+            filename = os.path.basename(path)
+            name = os.path.splitext(filename)[0]
+            dir_path = os.path.join(self.temp_dir, name)
+            os.makedirs(dir_path, exist_ok=True)
+
+            # Основной streaming-пайплайн
+            async for msg in self.__process_video_stream(path, name, dir_path):
+                yield msg
+
+            # Успешное завершение
+            yield self.create_success_message(
+                result={"output": f"{name}.mp4"}
+            )
+
+        except Exception as e:
+            logger.exception("❌ Ошибка в execute_stream")
+            yield self.create_error_message(
+                error_code="ML_PROCESSING_FAILED",
+                error_message=str(e),
+                stage_failed=self._current_stage_id or "unknown"
+            )
+
+    async def __process_video_stream(self, path: str, name: str, result_dir: str):
+        """
+        Streaming версия обработки видео с прогрессом.
+        """
+
+        base_dir = os.path.join(self.temp_dir, name)
+        extract_audio_path = os.path.join(base_dir, f'{self.audio_extract_name}.mp3')
+        frames_output_dir = os.path.join(base_dir, 'frames')
+
+        # === ЭТАП 1: copying_file ===
+        self.next_stage()
+        yield self.get_current_stage_message()
+
+        shutil.copy(path, base_dir)
+
+        # === ЭТАП 2: splitting_frames ===
+        self.next_stage()
+        yield self.get_current_stage_message()
+
+        r = service_utils.extract_frames(path, frames_output_dir)
+        if not r.status:
+            raise Exception(r.error)
+
+        images = service_utils.get_image_paths(frames_output_dir)
+
+        # === ЭТАП 3: extracting_audio ===
+        self.next_stage()
+        yield self.get_current_stage_message()
+
+        r = service_utils.extract_audio(path, extract_audio_path)
+        if not r.status:
+            raise Exception(r.error)
+
+        # === ЭТАП 4: recognizing_speech ===
+        self.next_stage()
+        yield self.get_current_stage_message()
+
+        r = self.recognizer.transcribe(extract_audio_path)
+        if not r.status:
+            raise Exception(r.error)
+        transcript = r.result
+
+        # === ЭТАП 5: translating_text ===
+        self.next_stage()
+        yield self.get_current_stage_message()
+
+        r = self.translator.translate(transcript)
+        if not r.status:
+            raise Exception(r.error)
+        translation = r.result
+
+        # === ЭТАП 6: generating_tts ===
+        self.next_stage()
+        yield self.get_current_stage_message()
+
+        wav_path = os.path.join(base_dir, f'{self.audio_translate_name}.wav')
+        mp3_path = os.path.join(base_dir, f'{self.audio_translate_name}.mp3')
+
+        r = self.generator.synthesize(translation, output_path=wav_path)
+        if not r.status:
+            raise Exception(r.error)
+
+        service_utils.wav_to_mp3(wav_path, mp3_path)
+
+        # === ЭТАП 7: processing_frames (С ПОДЭТАПАМИ) ===
+        self.next_stage(total_substeps=len(images))
+
+        ocr_results = self.ocr.batch(images).result
+        translated = service_utils.translate_ocr_results(
+            self.translator, ocr_results
+        ).result
+
+        out_dir = os.path.join(base_dir, "frames_translated")
+        os.makedirs(out_dir, exist_ok=True)
+
+        for img in images:
+            service_utils.translate_images(
+                [img], translated, output_dir=out_dir, font_path="arial.ttf"
+            )
+            self.increment_substep()
+            yield self.get_current_stage_message(include_eta=True)
+
+        # === ЭТАП 8: assembling_video ===
+        self.next_stage()
+        yield self.get_current_stage_message()
+
+        service_utils.create_video_with_new_audio(
+            images_dir=out_dir,
+            original_video_path=path,
+            new_audio_path=mp3_path,
+            output_video_path=os.path.join(self.temp_dir, f"{name}.mp4")
+        )
+
 
     def __process_video(self, path: str, name: str, result_dir: str) -> dict:
         """
@@ -322,76 +329,126 @@ class MLService(BaseService):
                 - "status" (bool): Успешность операции.
                 - "error" (str, optional): Сообщение об ошибке (если есть).
         """
-        # --- Разбиение видео на кадры ---
-        src_frames_dir = os.path.join(self.temp_dir, f'{name}_src_frames')
-        r = split_video_to_frames(path, src_frames_dir)
-        if not r['status']:
-            logging.info(f"❌ Ошибка обработки кадров: {r['error']}")
-            return {'status': False, 'error': r['error']}
-        logging.info(f"✅ Обработано кадров: {r['procced_frames']}")
+        # Основная логика обработки файла
 
-        # --- Извлечение аудио ---
-        src_audio_dir = os.path.join(self.temp_dir, f'{name}.mp3')
-        r = extract_audio_from_video(path, src_audio_dir)
-        if not r['status']:
-            logging.info(f"❌ Ошибка извлечения аудио: {r['error']}")
-            return {'status': False, 'error': r['error']}
-        logging.info("✅ Аудио успешно извлечено")
+        filename = os.path.basename(path)
+        name = os.path.splitext(filename)[0]
+        dir_path = os.path.join(self.temp_dir, name)
+        os.makedirs(dir_path, exist_ok=True)
 
-        # --- Распознавание речи ---
-        r = self.spech_recognize(src_audio_dir)
-        if not r['status']:
-            logging.info(f"❌ Ошибка распознавания аудио: {r['error']}")
-            return {'status': False, 'error': r['error']}
-        text_from_audio = r['text']
-        logging.info(f"✅ Распознанный текст: {text_from_audio[:100]}...")
+        extract_audio_path = os.path.join(self.temp_dir, name, f'{self.audio_extract_name}.mp3')
+        frames_output_dir = os.path.join(self.temp_dir, name, 'frames')
 
-        # --- Перевод текста ---
-        r = self.translate(text_from_audio)
-        if not r['status']:
-            logging.info(f"❌ Ошибка перевода: {r['error']}")
-            return {'status': False, 'error': r['error']}
-        translated_text = r['text']
-        logging.info(f"✅ Текст переведён: {translated_text[:100]}...")
+        with log_duration("Предобработка"):
+            resp: service_utils.Response = service_utils.extract_audio(path, extract_audio_path)
+            if resp.status is False:
+                return service_utils.Response(False, resp.error, None) 
+            
+            resp: service_utils.Response = service_utils.extract_frames(path, frames_output_dir)   
+            if resp.status is False:
+                return service_utils.Response(False, resp.error, None)          
 
-        # --- Синтез переведённого аудио ---
-        translated_audio_dir = f'{name}_translated'
-        r = self.tts(translated_text, translated_audio_dir)
-        if not r['status']:
-            logging.info(f"❌ Ошибка синтеза аудио: {r['error']}")
-            return {'status': False, 'error': r['error']}
-        logging.info("✅ Генерация переведённого аудио завершена")
+        with log_duration("Обработка"):
+            resp: service_utils.Response = self._audio_process(path, self.temp_dir, name)
+            if resp.status is False:
+                return service_utils.Response(False, resp.error, None) 
+            
+            resp: service_utils.Response = self._video_process(path, self.temp_dir, name)
+            if resp.status is False:
+                return service_utils.Response(False, resp.error, None) 
 
-        # --- Обработка кадров ---
-        translated_frames_dir = os.path.join(self.temp_dir, f'{name}_translated_frames')
-        r = tr_frames(src_frames_dir, res_dir=translated_frames_dir)
-        if not r['status']:
-            logging.info(f"❌ Ошибка обработки кадров: {r['error']}")
-            return {'status': False, 'error': r['error']}
-        logging.info("✅ Перевод кадров завершён")
+        images_dir=os.path.join(self.temp_dir, name, 'frames_translated')
+        original_video_path = path
+        new_audio_path = os.path.join(self.temp_dir, name, f'{self.audio_translate_name}.mp3')
+        output_video_path=os.path.join(self.temp_dir, f'{name}.mp4')
 
-        # --- Переименование исходного видео ---
-        file_name = os.path.basename(path)
-        r = rename_file(self.temp_dir, file_name, f'temp_{file_name}')
-        if not r['status']:
-            logging.info(f"❌ Ошибка переименования: {r['error']}")
-            return {'status': False, 'error': r['error']}
-        logging.info("✅ Файл переименован")
+        with log_duration("Постобработка"):
+            resp:service_utils.Response = service_utils.create_video_with_new_audio(    
+                images_dir=images_dir,
+                original_video_path=original_video_path,
+                new_audio_path=new_audio_path,
+                output_video_path=output_video_path
+            )
+            if resp.status is False:
+                return service_utils.Response(False, resp.error, None) 
+        try:
+            shutil.rmtree(dir_path)
+            logger.info(f"✅Директория '{dir_path}' успешно удалена.")
+        except FileNotFoundError:
+            logger.info(f"❌Директория '{dir_path}' не найдена.")
+        except Exception as e:
+            logger.info(f"❌Ошибка при удалении директории: {e}")
+        
+        return service_utils.Response(True, None, None)
+    
+    def _audio_process(self, path, temp_dir, name):
+        base_dir = os.path.join(temp_dir, name)
+        extract_audio_path = os.path.join(base_dir, f"{self.audio_extract_name}.mp3")
+        translated_wav = os.path.join(base_dir, f"{self.audio_translate_name}.wav")
+        translated_mp3 = os.path.join(base_dir, f"{self.audio_translate_name}.mp3")
 
-        # --- Сборка нового видео ---
-        r = images_to_video_with_audio_auto_fps(
-            os.path.join(self.temp_dir, f'{name}_translated_frames'),
-            os.path.join(self.temp_dir, f'{name}_translated.wav'),
-            os.path.join(self.temp_dir, file_name),
-            path.replace(file_name, f'temp_{file_name}')
-        )
-        if not r['status']:
-            logging.info(f"❌ Ошибка сборки видео: {r['error']}")
-            return {'status': False, 'error': r['error']}
-        logging.info("✅ Сборка видео завершена")
+        with log_duration("SimpleWhisper.transcribe"):
+            resp: service_utils.Response = self.recognizer.transcribe(extract_audio_path)
+            if resp.status is False:
+                return service_utils.Response(False, resp.error, None)
+            transcript = resp.result
+            path = os.path.join(temp_dir, name, f"audio_text_transcript.txt")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(transcript)
+            
+        with log_duration("Translator.translate"):
+            resp: service_utils.Response = self.translator.translate(transcript)
+            if resp.status is False:
+                return service_utils.Response(False, resp.error, None)
+            translation = resp.result
+            path = os.path.join(temp_dir, name, f"audio_text_translation.txt")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(translation)
 
-        # --- Очистка временных файлов ---
-        clean_directory(self.temp_dir, [file_name, f'temp_{file_name}'])
-        logging.info("🧹 Временные файлы удалены")
+        with log_duration("TextToSpeech.synthesize"):
+            resp: service_utils.Response = self.generator.synthesize(translation, output_path=translated_wav)
+            if resp.status is False:
+                return service_utils.Response(False, resp.error, None)
 
-        return {'status': True}
+        with log_duration("wav_to_mp3"):
+            resp: service_utils.Response = service_utils.wav_to_mp3(translated_wav, translated_mp3)
+            if resp.status is False:
+                return service_utils.Response(False, resp.error, None)
+        
+        return service_utils.Response(True, None, None)
+
+    def _video_process(self, path, temp_dir, name):
+        frames_dir = os.path.join(temp_dir, name, 'frames')
+        images = service_utils.get_image_paths(frames_dir)
+        output_dir = os.path.join(temp_dir, name, 'frames_translated')
+        ocr_out_path = os.path.join(temp_dir, name, f'ocr.json')
+
+        with log_duration("OCR"):
+            resp: service_utils.Response = self.ocr.batch(images)
+            if resp.status is False:
+                return service_utils.Response(False, resp.error, None)
+            results = resp.result
+
+            resp: service_utils.Response = self.ocr.save_results_to_json(results, ocr_out_path)
+            if resp.status is False:
+                return service_utils.Response(False, resp.error, None)
+    
+        with log_duration("Translate"):
+            results = service_utils.load_json(ocr_out_path)
+            resp: service_utils.Response = service_utils.translate_ocr_results(self.translator, results)
+            if resp.status is False:
+                return service_utils.Response(False, resp.error, None)
+            translated_data = resp.result
+            service_utils.save_json(translated_data, os.path.join(temp_dir, name, 'video_text.json'))
+
+        with log_duration('Re translate'):
+            resp: service_utils.Response = service_utils.translate_images(
+                images,
+                translated_data,
+                output_dir=output_dir,
+                font_path="arial.ttf"
+            )
+            if resp.status is False:
+                return service_utils.Response(False, resp.error, None) 
+        
+        return service_utils.Response(True, None, None)

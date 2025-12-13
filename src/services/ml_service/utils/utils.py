@@ -49,33 +49,34 @@ def save_json(data, path):
 
 def translate_ocr_results(translator, data):
     # карта уникальных страниц (длина == data)
-    try:
-        unique_map = fill_with_unique(data)
-        unique_idxs = sorted(set(unique_map))
+    unique_map = fill_with_unique(data)
+    unique_idxs = sorted(set(unique_map))
 
-        texts = []
-        for idx in unique_idxs:
-            for item in data[idx]:
-                texts.append(item["text"])
+    texts = []
+    for idx in unique_idxs:
+        for item in data[idx]:
+            texts.append(item["text"])
 
-        # 2. Переводим
-        translations = translator.batch_translate(texts)
+    # 2. Переводим
+    resp: Response = translator.batch_translate(texts)
+    if resp.status is False:
+        return resp
+    translations = resp.result
 
-        # 3. Назначаем переводы уникальным страницам
-        t_idx = 0
-        for idx in unique_idxs:
-            for item in data[idx]:
-                item["translation"] = translations[t_idx]
-                t_idx += 1
+    # 3. Назначаем переводы уникальным страницам
+    t_idx = 0
+    for idx in unique_idxs:
+        for item in data[idx]:
+            item["translation"] = translations[t_idx]
+            t_idx += 1
 
-        # 4. Копируем текст в дубликаты
-        for i, page in enumerate(data):
-            original_idx = unique_map[i]
-            for item, orig_item in zip(page, data[original_idx]):
-                item["translation"] = orig_item["translation"]
-        return Response(True, None, data)
-    except Exception as e:
-        return Response(False, e, None)
+    # 4. Копируем текст в дубликаты
+    for i, page in enumerate(data):
+        original_idx = unique_map[i]
+        for item, orig_item in zip(page, data[original_idx]):
+            item["translation"] = orig_item["translation"]
+
+    return Response(True, None, data)
 
 
 
