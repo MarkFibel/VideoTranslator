@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: videotranslator_rabbitmq
+    hostname: rabbitmq
+    restart: unless-stopped
+    
+    ports:
+      # AMQP protocol port
+      - "5672:5672"
+      # Management UI port
+      - "15672:15672"
+    
+    environment:
+      # Default credentials (change in production!)
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+      RABBITMQ_DEFAULT_VHOST: /
+      
+      # Enable management plugin
+      RABBITMQ_PLUGINS: rabbitmq_management
+    
+    volumes:
+      # Persist RabbitMQ data
+      - rabbitmq_data:/var/lib/rabbitmq
+      # Custom configuration (optional)
+      - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      # Definitions (queues, exchanges, etc.)
+      - ./rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
+    
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    
+    networks:
+      - videotranslator_network
+
+volumes:
+  rabbitmq_data:
+    driver: local
+
+networks:
+  videotranslator_network:
+    driver: bridge

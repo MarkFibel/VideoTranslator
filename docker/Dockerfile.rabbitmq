@@ -1,0 +1,24 @@
+# Dockerfile для кастомной настройки RabbitMQ
+# Использование: docker build -f docker/Dockerfile.rabbitmq -t videotranslator-rabbitmq .
+
+FROM rabbitmq:3.12-management-alpine
+
+# Установка дополнительных плагинов (если нужно)
+# RUN rabbitmq-plugins enable rabbitmq_shovel rabbitmq_shovel_management
+
+# Копирование кастомной конфигурации
+COPY docker/rabbitmq/rabbitmq.conf /etc/rabbitmq/rabbitmq.conf
+COPY docker/rabbitmq/definitions.json /etc/rabbitmq/definitions.json
+
+# Установка прав доступа
+RUN chown rabbitmq:rabbitmq /etc/rabbitmq/rabbitmq.conf /etc/rabbitmq/definitions.json
+
+# Expose ports
+EXPOSE 5672 15672
+
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=10s --retries=5 --start-period=40s \
+    CMD rabbitmq-diagnostics ping
+
+# Default command
+CMD ["rabbitmq-server"]
