@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "VideoTranslator"
     VERSION: str = "0.1.0"
     DEBUG: bool = False
+    APP_PORT: int = 8000
     
     # Настройки логирования
     LOG_LEVEL: str = "INFO"
