@@ -369,10 +369,10 @@ async def upload_file_stream(
                 file_service.save_file_metadata(
                     session=session,
                     file_id=file_id,
-                    filename=file.filename,
+                    filename=file.filename or "unknown",
                     file_path=temp_file_path,
-                    content_type=file.content_type,
-                    size=file.size
+                    content_type=file.content_type or "application/octet-stream",
+                    size=file.size or 0
                 )
                 
                 session['pending'] = False
