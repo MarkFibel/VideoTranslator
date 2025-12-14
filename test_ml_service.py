@@ -8,6 +8,6 @@ logger = logging.getLogger(__name__)
 
 if __name__ == '__main__':
     ml_service = MLService(temp_dir='var/temp')
-    data = {'path': 'var/data/sample.mp4', 'name': 'sample'}
+    data = {'path': 'var/data_ocr/small_sample.mp4'}
     logger.info("Запуск MLService.execute с данными: %s", data)
     ml_service.execute(data)
