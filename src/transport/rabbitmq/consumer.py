@@ -77,8 +77,8 @@ class RPCConsumer:
                 logger.info(f"Received RPC request. Correlation ID: {message.correlation_id}")
                 logger.debug(f"Request body: {request_body}")
                 
-                # Обрабатываем JSON-RPC запрос через диспетчер
-                response_body = self.dispatcher.handle_request(request_body)
+                # Обрабатываем JSON-RPC запрос через диспетчер (async)
+                response_body = await self.dispatcher.handle_request(request_body)
                 
                 logger.info(f"RPC request processed. Correlation ID: {message.correlation_id}")
                 logger.debug(f"Response body: {response_body}")

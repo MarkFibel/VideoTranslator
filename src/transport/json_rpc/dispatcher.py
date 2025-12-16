@@ -1,11 +1,14 @@
 """
 JSON-RPC диспетчер для обработки RPC запросов.
 Использует библиотеку jsonrpcserver для обработки JSON-RPC вызовов.
+Поддерживает async методы сервисов.
 """
 
 import logging
+import asyncio
+import inspect
 from typing import Dict, Any
-from jsonrpcserver import method, Success, Result, dispatch
+from jsonrpcserver import method, Success, Result, async_dispatch
 from .service_loader import ServiceLoader
 from src.services.base_service import BaseService
 from src.exceptions.rpc_exceptions import ServiceExecutionError
@@ -49,37 +52,58 @@ class JSONRPCDispatcher:
     def _register_method(self, method_name: str, service: BaseService):
         """
         Регистрирует метод execute сервиса в jsonrpcserver.
+        Поддерживает как sync, так и async методы execute.
         
         :param method_name: Имя RPC метода (например, "test.execute")
         :param service: Экземпляр сервиса
         """
-        @method(name=method_name)
-        def execute_wrapper(data: dict) -> Result:
-            """
-            Обертка для вызова метода execute сервиса.
-            
-            :param data: Данные для обработки сервисом
-            :return: Success с результатом выполнения сервиса
-            """
-            try:
-                logger.info(f"Executing RPC method: {method_name}")
-                logger.debug(f"Request data: {data}")
+        # Проверяем, является ли execute async методом
+        is_async = asyncio.iscoroutinefunction(service.execute)
+        
+        if is_async:
+            @method(name=method_name)
+            async def async_execute_wrapper(data: dict) -> Result:
+                """
+                Асинхронная обертка для вызова async метода execute сервиса.
+                """
+                try:
+                    logger.info(f"Executing async RPC method: {method_name}")
+                    logger.debug(f"Request data: {data}")
+                    
+                    result = await service.execute(data)
+                    
+                    logger.info(f"RPC method {method_name} executed successfully")
+                    logger.debug(f"Response data: {result}")
+                    
+                    return Success(result)
                 
-                result = service.execute(data)
+                except Exception as e:
+                    logger.error(f"Error executing RPC method {method_name}: {e}", exc_info=True)
+                    raise ServiceExecutionError(f"Service execution failed: {str(e)}")
+        else:
+            @method(name=method_name)
+            def sync_execute_wrapper(data: dict) -> Result:
+                """
+                Синхронная обертка для вызова sync метода execute сервиса.
+                """
+                try:
+                    logger.info(f"Executing sync RPC method: {method_name}")
+                    logger.debug(f"Request data: {data}")
+                    
+                    result = service.execute(data)
+                    
+                    logger.info(f"RPC method {method_name} executed successfully")
+                    logger.debug(f"Response data: {result}")
+                    
+                    return Success(result)
                 
-                logger.info(f"RPC method {method_name} executed successfully")
-                logger.debug(f"Response data: {result}")
-                
-                # Возвращаем Success объект, как требует jsonrpcserver
-                return Success(result)
-            
-            except Exception as e:
-                logger.error(f"Error executing RPC method {method_name}: {e}", exc_info=True)
-                raise ServiceExecutionError(f"Service execution failed: {str(e)}")
+                except Exception as e:
+                    logger.error(f"Error executing RPC method {method_name}: {e}", exc_info=True)
+                    raise ServiceExecutionError(f"Service execution failed: {str(e)}")
     
-    def handle_request(self, request_body: str) -> str:
+    async def handle_request(self, request_body: str) -> str:
         """
-        Обрабатывает входящий JSON-RPC запрос.
+        Обрабатывает входящий JSON-RPC запрос асинхронно.
         
         :param request_body: Тело JSON-RPC запроса в виде строки
         :return: JSON-RPC ответ в виде строки
@@ -88,8 +112,8 @@ class JSONRPCDispatcher:
             logger.info("Handling JSON-RPC request")
             logger.debug(f"Request body: {request_body}")
             
-            # Используем dispatch из jsonrpcserver для обработки запроса
-            response = dispatch(request_body)
+            # Используем async_dispatch для поддержки async методов
+            response = await async_dispatch(request_body)
             
             logger.info("JSON-RPC request handled successfully")
             logger.debug(f"Response: {response}")

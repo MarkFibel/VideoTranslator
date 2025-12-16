@@ -22,14 +22,16 @@ class SSEEventFormatter:
     """
     
     @staticmethod
-    def format_event(message: Dict[str, Any]) -> str:
+    def format_event(message: Dict[str, Any], event_type: str = None) -> str:
         """
         Преобразует dict-сообщение в SSE событие.
         
         :param message: Сообщение от BaseService (create_progress_message, etc.)
+        :param event_type: Явно указанный тип события (если None - определяется автоматически)
         :return: Отформатированная SSE строка с двойным \n\n
         """
-        event_type = SSEEventFormatter._detect_event_type(message)
+        if event_type is None:
+            event_type = SSEEventFormatter._detect_event_type(message)
         
         # Формируем SSE событие
         sse_lines = []
@@ -81,6 +83,15 @@ class SSEEventFormatter:
         :return: SSE комментарий
         """
         return ": keepalive\n\n"
+    
+    @staticmethod
+    def format_ping() -> str:
+        """
+        Создает SSE ping событие для поддержания соединения.
+        
+        :return: SSE ping событие
+        """
+        return "event: ping\ndata: {}\n\n"
     
     @staticmethod
     def format_custom_event(event_type: str, data: Dict[str, Any]) -> str:

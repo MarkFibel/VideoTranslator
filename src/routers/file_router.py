@@ -1,236 +1,56 @@
+"""
+Роутер для работы с файлами.
+
+Архитектура:
+1. Клиент загружает файл через SSE endpoint
+2. Файл сохраняется локально
+3. Загружается в S3 через RabbitMQ (ya_s3.execute)
+4. Отправляется на ML обработку через RabbitMQ (ml.execute)
+5. SSE пинги поддерживают соединение пока идёт обработка
+6. Результат возвращается клиенту
+"""
+
 import os
-import uuid
 import asyncio
-from datetime import datetime, timezone
 import logging
-from starlette.status   import HTTP_500_INTERNAL_SERVER_ERROR
-from fastapi            import APIRouter, HTTPException, UploadFile, Request, Depends, Form
-from fastapi.responses  import FileResponse, JSONResponse, StreamingResponse
+from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
+from fastapi import APIRouter, HTTPException, UploadFile, Request, Form
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
 from src.transport.rabbitmq.producer import RPCProducer
-from src.config.app_config import settings
-from src.utils.files_utils import get_file_extension_by_content_type
 from src.utils.sse_utils import get_sse_headers
 from src.utils.upload_utils import FileUploadService
-from src.utils.sse_service_registry import sse_registry
 from src.utils.sse_formatter import SSEEventFormatter
-from src.dependencies import verify_captcha_token
 
 router = APIRouter(prefix='/files', tags=["files"])
 logger = logging.getLogger(__name__)
 
+# Константы
+RPC_TIMEOUT = 900.0  # 15 минут
+SSE_PING_INTERVAL = 15  # секунд
 
-async def upload_to_s3_stream(file_path: str, object_key: str, file_id: str, result: dict):
-    """
-    Загружает файл в S3 хранилище с SSE прогрессом.
-    
-    :param file_path: Путь к локальному файлу для загрузки
-    :param object_key: Ключ объекта в S3 (например, 'uploads/file_id.mp4')
-    :param file_id: ID файла для логирования
-    :param result: Изменяемый словарь для возврата результата {"success": bool, "object_key": str, "url": str}
-    :yields: SSE события прогресса загрузки
-    """
-    logger.info(f"Starting S3 upload for file {file_id}, object_key: {object_key}")
-    
-    result["success"] = False
-    result["object_key"] = None
-    result["url"] = None
-    
-    try:
-        # Вызываем S3 сервис через SSE registry
-        async for sse_event in sse_registry.execute_service_stream(
-            service_name="ya_s3",
-            params={
-                "data": {
-                    "operation": "upload",
-                    "file_path": file_path,
-                    "object_key": object_key
-                }
-            }
-        ):
-            # Проверяем успешное завершение
-            if 'event: complete' in sse_event:
-                result["success"] = True
-                # Извлекаем результат из события complete
-                # Формат: data: {"result": {"object_key": "...", "url": "..."}}
-                import json
-                try:
-                    lines = sse_event.strip().split('\n')
-                    for line in lines:
-                        if line.startswith('data: '):
-                            data = json.loads(line[6:])
-                            if 'result' in data:
-                                result["object_key"] = data['result'].get('object_key')
-                                result["url"] = data['result'].get('url')
-                except Exception as parse_err:
-                    logger.error(f"Failed to parse S3 complete event: {parse_err}")
-            
-            # Проверяем ошибку
-            if 'event: error' in sse_event:
-                logger.error(f"S3 upload failed for file {file_id}")
-                result["success"] = False
-            
-            yield sse_event
-            await asyncio.sleep(0)
-        
-        if result["success"]:
-            logger.info(f"S3 upload completed successfully for file {file_id}")
-        else:
-            logger.error(f"S3 upload failed for file {file_id}")
-            
-    except Exception as e:
-        logger.error(f"Exception during S3 upload for file {file_id}: {e}", exc_info=True)
-        result["success"] = False
-
-
-@router.post("/upload")
-async def upload_file(
-    file: UploadFile,
-    request: Request,
-    _: None = Depends(verify_captcha_token)
-) -> JSONResponse:
-    logger.info(f"File upload started. Filename: {file.filename}, Content-Type: {file.content_type}")
-    
-    file_tmp_name = ''
-    
-    try:
-        # Получаем сессию пользователя
-        session = request.state.session.get_session()
-        
-        if (session.get('pending', False)):
-            raise HTTPException(400, {"code": "file_processing", "detail": "Файл уже в процессе обработки. Пожалуйста, дождитесь завершения."})
-
-        if (session.get('need_download', False)):
-            raise HTTPException(400, {"code": "file_download_pending", "detail": "Пожалуйста, скачайте предыдущий файл перед загрузкой нового."})
-
-        session['pending'] = True
-    
-        temp_dir = settings.TEMP_DIR
-        
-        if (os.path.exists(temp_dir) is False):
-            os.makedirs(temp_dir)
-            
-        if (session.get('last_uploaded_file')):
-            # Удаляем предыдущий временный файл, если он существует
-            previous_file_path = session['last_uploaded_file'].get("file_path", "")
-            if previous_file_path and os.path.exists(previous_file_path):
-                try:
-                    os.remove(previous_file_path)
-                    session['last_uploaded_file'] = None
-                    logger.info(f"Previous temporary file removed: {previous_file_path}")
-                except Exception as e:
-                    logger.warning(f"Failed to remove previous temporary file `{previous_file_path}`: {str(e)}")
-
-        file_id = uuid.uuid4().hex  # Генерируем уникальный идентификатор файла
-        file_ext = get_file_extension_by_content_type(file.content_type if file.content_type else "")
-
-        file_tmp_name = f"{file_id}.{file_ext}" if file_ext else file_id
-        file_name_without_ext = os.path.splitext(file_tmp_name)[0]
-
-        temp_file_path = os.path.join(temp_dir, file_tmp_name)  # Временный путь для сохранения файла
-        with open(temp_file_path, "wb") as temp_file:
-            content = await file.read()
-            temp_file.write(content)
-        
-
-        producer: RPCProducer = RPCProducer()
-        await producer.connect()
-        
-        await producer.call(
-            method="ml.execute",
-            params={
-                "data": {
-                    "name": file_name_without_ext,
-                    "path": temp_file_path
-                }
-            },
-            timeout=240.
-        )
-
-        # Сохраняем метаданные файла в сессию пользователя
-        session['last_uploaded_file'] = {
-            "file_id": file_id,
-            "filename": file.filename,
-            "file_path": temp_file_path,
-            "content_type": file.content_type,
-            "extension": file_ext,
-            "size": file.size,
-            "upload_time": datetime.now(timezone.utc).isoformat()
-        }
-
-        session['pending'] = False
-        session['need_download'] = True
-
-        return JSONResponse(
-            {"code": "success", "detail": "Файл успешно обработан."},
-            status_code=200
-        )
-    
-    except HTTPException as http_exc:
-        session['pending'] = False
-        session['need_download'] = False 
-        
-        logger.error(f"HTTP file upload error: {str(http_exc.detail)}", exc_info=True)
-        
-        try:
-            session['last_uploaded_file'] = None
-            
-            if (file_tmp_name and os.path.exists(file_tmp_name)):
-                os.remove(file_tmp_name)
-            
-            logger.info(f"Current temporary file removed: {file_tmp_name}")
-        except Exception as e:
-            pass
-        
-        raise HTTPException(http_exc.status_code, http_exc.detail)
-        
-    except Exception as e:
-        session['pending'] = False
-        session['need_download'] = False 
-        
-        try:
-            session['last_uploaded_file'] = None
-            
-            if (file_tmp_name and os.path.exists(file_tmp_name)):
-                os.remove(file_tmp_name)
-            
-            logger.info(f"Current temporary file removed: {file_tmp_name}")
-        except Exception as e:
-            pass
-        
-        # Любые другие ошибки
-        logger.error(f"Unexpected file upload error: {str(e)}", exc_info=True)
-        raise HTTPException(HTTP_500_INTERNAL_SERVER_ERROR, f"Internal server error: {str(e)}")
 
 @router.get("/session/status")
 async def get_session_status(request: Request) -> JSONResponse:
     """
     Получение статуса сессии пользователя.
     Возвращает информацию о текущем состоянии обработки файла.
-    
-    :param request: Объект запроса FastAPI
-    :return: JSON с данными о статусе сессии
     """
     logger.info("Session status requested.")
     
     try:
         session = request.state.session.get_session()
         
-        # Получаем базовые флаги состояния
         pending = session.get('pending', False)
         need_download = session.get('need_download', False)
-        
-        # Получаем метаданные файла если они есть
         file_metadata = session.get('last_uploaded_file', {})
         
-        # Формируем минимальный ответ
         response_data = {
             "pending": pending,
             "need_download": need_download,
             "file": None
         }
         
-        # Если есть файл для скачивания, добавляем его метаданные
         if need_download and file_metadata:
             response_data["file"] = {
                 "filename": file_metadata.get("filename", ""),
@@ -251,37 +71,31 @@ async def get_session_status(request: Request) -> JSONResponse:
 async def download_file(request: Request) -> FileResponse:
     """
     Загрузка файла по данным сессии пользователя.
-    
-    :param request: Объект запроса FastAPI
-    :return: Файл
-    :raises HTTPException: Если файл не найден или произошла ошибка
     """
-    logger.info(f"File download requested.")
+    logger.info("File download requested.")
     
     try:
-        # Получаем метаданные файла из сессии
         session = request.state.session.get_session()
         file_metadata = session.get('last_uploaded_file', {})
         
         file_path = file_metadata.get("file_path", "")
         logger.info(f"Looking for file with path: `{file_path}`")
 
-        # Ищем файл
         if not os.path.exists(file_path):
             logger.error(f"No files found for File ID: {file_metadata.get('file_id', '')}")
             raise HTTPException(404, {"code": "file_not_found", "detail": "Файл не найден"})
 
-        # НЕ сбрасываем need_download - пользователь может скачивать файл многократно
-        # session['need_download'] = False  # УБРАНО: позволяем повторные скачивания
-
-        # Возвращаем найденный файл
-        return FileResponse(path=file_path, filename=file_metadata.get('filename', ''), media_type=file_metadata.get('content_type', ''))
+        return FileResponse(
+            path=file_path, 
+            filename=file_metadata.get('filename', ''), 
+            media_type=file_metadata.get('content_type', '')
+        )
 
     except HTTPException:
         raise
         
     except Exception as e:
-        logger.error(f"Unexpected file download error for File ID `{file_metadata.get('file_id', '')}`: {str(e)}", exc_info=True)
+        logger.error(f"Unexpected file download error: {str(e)}", exc_info=True)
         raise HTTPException(HTTP_500_INTERNAL_SERVER_ERROR, {"code": "internal_server_error", "detail": "Произошла ошибка. Пожалуйста, попробуйте позже."})
 
 
@@ -289,17 +103,12 @@ async def download_file(request: Request) -> FileResponse:
 async def reset_session(request: Request) -> JSONResponse:
     """
     Сброс сессии пользователя и очистка всех данных о файлах.
-    Удаляет временные файлы и подготавливает сессию для новой загрузки.
-    
-    :param request: Объект запроса FastAPI
-    :return: JSON с подтверждением сброса
     """
     logger.info("Session reset requested.")
     
     try:
         session = request.state.session.get_session()
         
-        # Удаляем временный файл если он есть
         file_metadata = session.get('last_uploaded_file', {})
         if file_metadata:
             file_path = file_metadata.get('file_path', '')
@@ -310,7 +119,6 @@ async def reset_session(request: Request) -> JSONResponse:
                 except Exception as e:
                     logger.warning(f"Failed to remove file during session reset: {e}")
         
-        # Очищаем все флаги и данные сессии
         session['pending'] = False
         session['need_download'] = False
         session['last_uploaded_file'] = None
@@ -334,24 +142,24 @@ async def upload_file_stream(
     captcha_token: str = Form(None, alias="captcha_token")
 ) -> StreamingResponse:
     """
-    Универсальная загрузка файла с SSE streaming прогресса.
-    POST запрос сразу возвращает SSE поток.
+    Загрузка файла с SSE streaming.
     
     Архитектура:
-    1. Валидация сессии
-    2. Сохранение файла в temp директорию
-    3. Прямой вызов ML сервиса через execute_stream() - БЕЗ RabbitMQ
-    4. Проксирование SSE событий от сервиса к клиенту
-    5. Сохранение метаданных в сессию
+    1. Валидация сессии и капчи
+    2. Сохранение файла локально
+    3. Загрузка в S3 через RabbitMQ (ya_s3.execute)
+    4. ML обработка через RabbitMQ (ml.execute)
+    5. SSE пинги каждые 15 секунд пока идёт обработка
+    6. Финальный ответ event: complete с URL результата
     
     Отправляет события:
-    - event: progress - промежуточный прогресс от сервиса
-    - event: complete - успешное завершение
+    - event: ping - поддержание соединения
+    - event: complete - успешное завершение с URL
     - event: error - ошибка обработки
     """
     logger.info(f"SSE upload started: {file.filename}")
     
-    # Проверяем капчу перед началом стриминга
+    # Проверяем капчу
     from src.utils.captcha_utils import verify_captcha, get_client_ip
     
     client_ip = get_client_ip(request)
@@ -372,12 +180,12 @@ async def upload_file_stream(
         completed_successfully = False
         temp_file_path = None
         file_id = None
+        producer = None
         
         file_service = FileUploadService()
         formatter = SSEEventFormatter()
         
         try:
-            # Получаем сессию
             session = request.state.session.get_session()
             
             # 1. Валидация состояния сессии
@@ -398,87 +206,157 @@ async def upload_file_stream(
                 yield formatter.format_event(error_msg)
                 return
             
-            # Устанавливаем pending только после успешной валидации
             session['pending'] = True
             
-            # 2. Сохранение файла
+            # 2. Сохранение файла локально
             file_id, temp_file_path = await file_service.save_uploaded_file(file, session)
+            logger.info(f"File saved locally: {temp_file_path}")
             
             # 3. Очистка предыдущих файлов
             await file_service.cleanup_previous_file(session)
             
-            # 4. Загрузка в S3 хранилище (ДО ML обработки)
+            # 4. Подключение к RabbitMQ
+            producer = RPCProducer()
+            await producer.connect()
+            logger.info("RabbitMQ producer connected")
+            
+            # 5. Загрузка в S3 через RabbitMQ
             file_ext = temp_file_path.split('.')[-1] if '.' in temp_file_path else ''
-            s3_object_key_target = f"uploads/{file_id}.{file_ext}" if file_ext else f"uploads/{file_id}"
+            s3_object_key = f"uploads/{file_id}.{file_ext}" if file_ext else f"uploads/{file_id}"
             
-            logger.info(f"Starting S3 upload for: {file.filename}")
+            logger.info(f"Starting S3 upload via RabbitMQ: {s3_object_key}")
             
-            s3_result = {"success": False, "object_key": None, "url": None}
+            # Отправляем пинг перед началом S3 загрузки
+            yield formatter.format_ping()
             
-            # Проксируем SSE события от S3 сервиса
-            async for sse_event in upload_to_s3_stream(temp_file_path, s3_object_key_target, file_id, s3_result):
-                yield sse_event
-                await asyncio.sleep(0)
+            # Запускаем S3 загрузку в фоне с пингами
+            s3_task = asyncio.create_task(
+                producer.call(
+                    method="ya_s3.execute",
+                    params={
+                        "data": {
+                            "operation": "upload",
+                            "file_path": temp_file_path,
+                            "object_key": s3_object_key
+                        }
+                    },
+                    timeout=RPC_TIMEOUT
+                )
+            )
             
-            # Если S3 загрузка провалилась - прерываем обработку
-            if not s3_result["success"]:
-                logger.error(f"S3 upload failed, aborting processing for: {file.filename}")
-                raise Exception("S3 upload failed")
+            # Ждём завершения S3 с пингами
+            s3_result = None
+            while not s3_task.done():
+                yield formatter.format_ping()
+                await asyncio.sleep(SSE_PING_INTERVAL)
             
-            # Получаем результат S3 загрузки
-            from src.config.services.ya_s3_config import Settings as S3Settings
-            s3_settings = S3Settings()
-            s3_object_key = s3_result["object_key"] or s3_object_key_target
-            s3_url = s3_result["url"] or f"https://storage.yandexcloud.net/{s3_settings.YA_S3_BUCKET_NAME}/{s3_object_key}"
+            # Получаем результат S3
+            try:
+                s3_result = await s3_task
+                logger.info(f"S3 upload completed: {s3_result}")
+            except Exception as s3_error:
+                logger.error(f"S3 upload failed: {s3_error}", exc_info=True)
+                error_msg = {
+                    "progress": -1,
+                    "stage": "error",
+                    "status": "error",
+                    "error": {
+                        "code": "S3_UPLOAD_FAILED",
+                        "message": "Ошибка загрузки файла в хранилище",
+                        "stage_failed": "s3_upload",
+                        "error_details": str(s3_error),
+                        "recoverable": True
+                    }
+                }
+                yield formatter.format_event(error_msg)
+                return
             
-            logger.info(f"S3 upload successful, starting ML processing for: {file.filename}")
-            
-            # 5. ПРЯМОЙ вызов ML сервиса через SSE registry (БЕЗ RabbitMQ!)
+            # 6. ML обработка через RabbitMQ
             file_name_without_ext = os.path.splitext(file.filename)[0] if file.filename else file_id
             
-            logger.info(f"Starting ML service stream for: {file.filename}")
+            logger.info(f"Starting ML processing via RabbitMQ: {file_name_without_ext}")
             
-            # Проксируем все SSE события от ML сервиса напрямую
-            async for sse_event in sse_registry.execute_service_stream(
-                service_name="ml",
-                params={
-                    "name": file_name_without_ext,
-                    "path": temp_file_path
-                }
-            ):
-                # Проверяем успешное завершение
-                if 'event: complete' in sse_event:
-                    completed_successfully = True
-                
-                yield sse_event
-                await asyncio.sleep(0)
-            
-            # 6. Сохранение метаданных
-            if completed_successfully:
-                file_service.save_file_metadata(
-                    session=session,
-                    file_id=file_id,
-                    filename=file.filename or "unknown",
-                    file_path=temp_file_path,
-                    content_type=file.content_type or "application/octet-stream",
-                    size=file.size or 0
+            # Запускаем ML обработку в фоне
+            ml_task = asyncio.create_task(
+                producer.call(
+                    method="ml.execute",
+                    params={
+                        "data": {
+                            "name": file_name_without_ext,
+                            "path": temp_file_path
+                        }
+                    },
+                    timeout=RPC_TIMEOUT
                 )
-                
-                # Добавляем S3 метаданные в сессию
-                if s3_object_key and s3_url:
-                    session['last_uploaded_file']['s3_object_key'] = s3_object_key
-                    session['last_uploaded_file']['s3_url'] = s3_url
-                    logger.info(f"S3 metadata saved: {s3_object_key}")
-                
-                session['pending'] = False
-                session['need_download'] = True
-                
-                logger.info(f"SSE upload completed successfully: {file.filename}")
-                
+            )
+            
+            # Ждём завершения ML с пингами
+            while not ml_task.done():
+                yield formatter.format_ping()
+                await asyncio.sleep(SSE_PING_INTERVAL)
+            
+            # Получаем результат ML
+            try:
+                ml_result = await ml_task
+                logger.info(f"ML processing completed: {ml_result}")
+            except Exception as ml_error:
+                logger.error(f"ML processing failed: {ml_error}", exc_info=True)
+                error_msg = {
+                    "progress": -1,
+                    "stage": "error",
+                    "status": "error",
+                    "error": {
+                        "code": "ML_PROCESSING_FAILED",
+                        "message": "Ошибка обработки файла",
+                        "stage_failed": "ml_processing",
+                        "error_details": str(ml_error),
+                        "recoverable": True
+                    }
+                }
+                yield formatter.format_event(error_msg)
+                return
+            
+            # 7. Успешное завершение
+            completed_successfully = True
+            
+            # Сохраняем метаданные
+            file_service.save_file_metadata(
+                session=session,
+                file_id=file_id,
+                filename=file.filename or "unknown",
+                file_path=temp_file_path,
+                content_type=file.content_type or "application/octet-stream",
+                size=file.size or 0
+            )
+            
+            # Добавляем S3 URL в метаданные
+            s3_url = s3_result.get('url') if isinstance(s3_result, dict) else None
+            if s3_url:
+                session['last_uploaded_file']['s3_url'] = s3_url
+                session['last_uploaded_file']['s3_object_key'] = s3_object_key
+            
+            session['pending'] = False
+            session['need_download'] = True
+            
+            # Отправляем complete событие
+            complete_msg = {
+                "progress": 100,
+                "stage": "complete",
+                "status": "completed",
+                "result": {
+                    "filename": file.filename,
+                    "file_id": file_id,
+                    "s3_url": s3_url,
+                    "ml_result": ml_result
+                }
+            }
+            yield formatter.format_event(complete_msg, event_type="complete")
+            
+            logger.info(f"SSE upload completed successfully: {file.filename}")
+            
         except Exception as e:
             logger.error(f"Critical error in SSE upload: {e}", exc_info=True)
             
-            # Cleanup при критической ошибке
             if session:
                 session['pending'] = False
                 session['need_download'] = False
@@ -499,14 +377,19 @@ async def upload_file_stream(
             yield formatter.format_event(error_msg)
             
         finally:
-            # КРИТИЧЕСКИ ВАЖНО: Cleanup при разрыве SSE соединения
+            # Закрываем producer
+            if producer:
+                try:
+                    await producer.close()
+                except Exception:
+                    pass
+            
+            # Cleanup при разрыве соединения
             if session and not completed_successfully:
                 if session.get('pending', False):
                     logger.warning(f"SSE connection interrupted for file {file.filename}")
-                    
                     session['pending'] = False
                     
-                    # Удаляем файл только если обработка не завершена
                     if not session.get('need_download', False) and temp_file_path:
                         await file_service.cleanup_temp_file(temp_file_path, session)
     

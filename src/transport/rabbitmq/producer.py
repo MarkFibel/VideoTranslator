@@ -27,13 +27,13 @@ class RPCProducer:
     - correlation_id для связывания запросов и ответов
     """
     
-    def __init__(self, connection_manager: ConnectionManager = ConnectionManager(rabbitmq_settings.url)):
+    def __init__(self, connection_manager: Optional[ConnectionManager] = None):
         """
         Инициализация продюсера.
         
-        :param connection_manager: Менеджер соединений с RabbitMQ
+        :param connection_manager: Менеджер соединений с RabbitMQ (если None - создается новый)
         """
-        self.connection_manager = connection_manager
+        self.connection_manager = connection_manager or ConnectionManager(rabbitmq_settings.url)
         self._futures: Dict[str, asyncio.Future] = {}
         self._lock = asyncio.Lock()
         self._callback_queue: Optional[AbstractQueue] = None

@@ -147,19 +147,17 @@ class YaS3Service(BaseService):
         
         :param data: Словарь с параметрами операции:
             {
-                "data": {
-                    "operation": "upload" | "download" | "delete" | "list",
-                    "file_path": str (для upload/download),
-                    "object_key": str (для download/delete),
-                    "prefix": str (для list, опционально)
-                }
+                "operation": "upload" | "download" | "delete" | "list",
+                "file_path": str (для upload/download),
+                "object_key": str (для download/delete),
+                "prefix": str (для list, опционально)
             }
         :yield: Словари с SSE сообщениями (прогресс, ошибки, результаты)
         """
         self._start_tracking()
         
-        # Извлекаем данные операции
-        operation_data = data.get("data", {})
+        # Извлекаем данные операции (поддерживаем оба формата: с вложенностью и без)
+        operation_data = data.get("data", data)
         operation = operation_data.get("operation", "").lower()
         
         logger.info(f"YaS3Service.execute_stream: operation={operation}, data={operation_data}")
@@ -563,31 +561,16 @@ class YaS3Service(BaseService):
                 error_details=str(e)
             )
     
-    def execute(self, data: dict) -> dict:
+    async def execute(self, data: dict) -> dict:
         """
-        Синхронная версия (для RPC backward compatibility).
-        Не рекомендуется для длительных операций - используйте execute_stream.
-        
-        :param data: Параметры операции
-        :return: Результат выполнения
+        :return: Результат выполнения (последнее сообщение из потока)
         """
-        logger.warning("YaS3Service.execute() called - prefer execute_stream() for SSE progress")
+        logger.info(f"YaS3Service.execute() called with data: {data}")
         
-        # Запускаем асинхронную версию синхронно
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        messages = []
+        async for message in self.execute_stream(data):
+            messages.append(message)
         
-        try:
-            messages = []
-            async def collect_messages():
-                async for message in self.execute_stream(data):
-                    messages.append(message)
-            
-            loop.run_until_complete(collect_messages())
-            
-            # Возвращаем последнее сообщение (обычно success или error)
-            return messages[-1] if messages else {"status": "error", "message": "No response"}
-            
-        finally:
-            loop.close()
+        # Возвращаем последнее сообщение (обычно success или error)
+        return messages[-1] if messages else {"status": "error", "message": "No response"}
 
