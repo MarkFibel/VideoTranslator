@@ -25,15 +25,15 @@ class RPCConsumer:
     для обработки и отправляет ответы обратно клиенту.
     """
 
-    def __init__(self, connection_manager: ConnectionManager = ConnectionManager(rabbitmq_settings.url), dispatcher: JSONRPCDispatcher = JSONRPCDispatcher()):
+    def __init__(self, connection_manager: Optional[ConnectionManager] = None, dispatcher: Optional[JSONRPCDispatcher] = None):
         """
         Инициализация консьюмера.
         
-        :param connection_manager: Менеджер соединений с RabbitMQ
-        :param dispatcher: JSON-RPC диспетчер для обработки запросов
+        :param connection_manager: Менеджер соединений с RabbitMQ (если None - создается новый)
+        :param dispatcher: JSON-RPC диспетчер для обработки запросов (если None - создается новый)
         """
-        self.connection_manager = connection_manager
-        self.dispatcher = dispatcher
+        self.connection_manager = connection_manager or ConnectionManager(rabbitmq_settings.url)
+        self.dispatcher = dispatcher or JSONRPCDispatcher()
         logger.info("RPCConsumer initialized")
     
     async def start_consuming(self):

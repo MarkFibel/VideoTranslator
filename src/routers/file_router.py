@@ -20,6 +20,69 @@ router = APIRouter(prefix='/files', tags=["files"])
 logger = logging.getLogger(__name__)
 
 
+async def upload_to_s3_stream(file_path: str, object_key: str, file_id: str, result: dict):
+    """
+    Загружает файл в S3 хранилище с SSE прогрессом.
+    
+    :param file_path: Путь к локальному файлу для загрузки
+    :param object_key: Ключ объекта в S3 (например, 'uploads/file_id.mp4')
+    :param file_id: ID файла для логирования
+    :param result: Изменяемый словарь для возврата результата {"success": bool, "object_key": str, "url": str}
+    :yields: SSE события прогресса загрузки
+    """
+    logger.info(f"Starting S3 upload for file {file_id}, object_key: {object_key}")
+    
+    result["success"] = False
+    result["object_key"] = None
+    result["url"] = None
+    
+    try:
+        # Вызываем S3 сервис через SSE registry
+        async for sse_event in sse_registry.execute_service_stream(
+            service_name="ya_s3",
+            params={
+                "data": {
+                    "operation": "upload",
+                    "file_path": file_path,
+                    "object_key": object_key
+                }
+            }
+        ):
+            # Проверяем успешное завершение
+            if 'event: complete' in sse_event:
+                result["success"] = True
+                # Извлекаем результат из события complete
+                # Формат: data: {"result": {"object_key": "...", "url": "..."}}
+                import json
+                try:
+                    lines = sse_event.strip().split('\n')
+                    for line in lines:
+                        if line.startswith('data: '):
+                            data = json.loads(line[6:])
+                            if 'result' in data:
+                                result["object_key"] = data['result'].get('object_key')
+                                result["url"] = data['result'].get('url')
+                except Exception as parse_err:
+                    logger.error(f"Failed to parse S3 complete event: {parse_err}")
+            
+            # Проверяем ошибку
+            if 'event: error' in sse_event:
+                logger.error(f"S3 upload failed for file {file_id}")
+                result["success"] = False
+            
+            yield sse_event
+            await asyncio.sleep(0)
+        
+        if result["success"]:
+            logger.info(f"S3 upload completed successfully for file {file_id}")
+        else:
+            logger.error(f"S3 upload failed for file {file_id}")
+            
+    except Exception as e:
+        logger.error(f"Exception during S3 upload for file {file_id}: {e}", exc_info=True)
+        result["success"] = False
+
+
 @router.post("/upload")
 async def upload_file(
     file: UploadFile,
@@ -62,7 +125,7 @@ async def upload_file(
         file_ext = get_file_extension_by_content_type(file.content_type if file.content_type else "")
 
         file_tmp_name = f"{file_id}.{file_ext}" if file_ext else file_id
-        file_name_without_ext, _ = os.path.splitext(file_tmp_name)
+        file_name_without_ext = os.path.splitext(file_tmp_name)[0]
 
         temp_file_path = os.path.join(temp_dir, file_tmp_name)  # Временный путь для сохранения файла
         with open(temp_file_path, "wb") as temp_file:
@@ -344,7 +407,33 @@ async def upload_file_stream(
             # 3. Очистка предыдущих файлов
             await file_service.cleanup_previous_file(session)
             
-            # 4. ПРЯМОЙ вызов ML сервиса через SSE registry (БЕЗ RabbitMQ!)
+            # 4. Загрузка в S3 хранилище (ДО ML обработки)
+            file_ext = temp_file_path.split('.')[-1] if '.' in temp_file_path else ''
+            s3_object_key_target = f"uploads/{file_id}.{file_ext}" if file_ext else f"uploads/{file_id}"
+            
+            logger.info(f"Starting S3 upload for: {file.filename}")
+            
+            s3_result = {"success": False, "object_key": None, "url": None}
+            
+            # Проксируем SSE события от S3 сервиса
+            async for sse_event in upload_to_s3_stream(temp_file_path, s3_object_key_target, file_id, s3_result):
+                yield sse_event
+                await asyncio.sleep(0)
+            
+            # Если S3 загрузка провалилась - прерываем обработку
+            if not s3_result["success"]:
+                logger.error(f"S3 upload failed, aborting processing for: {file.filename}")
+                raise Exception("S3 upload failed")
+            
+            # Получаем результат S3 загрузки
+            from src.config.services.ya_s3_config import Settings as S3Settings
+            s3_settings = S3Settings()
+            s3_object_key = s3_result["object_key"] or s3_object_key_target
+            s3_url = s3_result["url"] or f"https://storage.yandexcloud.net/{s3_settings.YA_S3_BUCKET_NAME}/{s3_object_key}"
+            
+            logger.info(f"S3 upload successful, starting ML processing for: {file.filename}")
+            
+            # 5. ПРЯМОЙ вызов ML сервиса через SSE registry (БЕЗ RabbitMQ!)
             file_name_without_ext = os.path.splitext(file.filename)[0] if file.filename else file_id
             
             logger.info(f"Starting ML service stream for: {file.filename}")
@@ -364,7 +453,7 @@ async def upload_file_stream(
                 yield sse_event
                 await asyncio.sleep(0)
             
-            # 5. Сохранение метаданных
+            # 6. Сохранение метаданных
             if completed_successfully:
                 file_service.save_file_metadata(
                     session=session,
@@ -374,6 +463,12 @@ async def upload_file_stream(
                     content_type=file.content_type or "application/octet-stream",
                     size=file.size or 0
                 )
+                
+                # Добавляем S3 метаданные в сессию
+                if s3_object_key and s3_url:
+                    session['last_uploaded_file']['s3_object_key'] = s3_object_key
+                    session['last_uploaded_file']['s3_url'] = s3_url
+                    logger.info(f"S3 metadata saved: {s3_object_key}")
                 
                 session['pending'] = False
                 session['need_download'] = True

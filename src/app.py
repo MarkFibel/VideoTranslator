@@ -93,4 +93,11 @@ app = get_application()
 
 if __name__ == "__main__":
     logger.info("Starting application server")
-    uvicorn.run("src.app:app", host="0.0.0.0", port=settings.APP_PORT, reload=settings.DEBUG)
+    uvicorn.run(
+        "src.app:app",
+        host="0.0.0.0",
+        port=settings.APP_PORT,
+        reload=settings.DEBUG,
+        reload_dirs=["src", "core", "ml", "public"] if settings.DEBUG else None,
+        reload_excludes=["*.log", "*.pyc", "__pycache__"] if settings.DEBUG else None
+    )

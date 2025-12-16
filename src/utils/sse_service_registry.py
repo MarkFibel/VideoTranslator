@@ -18,12 +18,12 @@ class SSEServiceRegistry:
     """
     Singleton реестр для прямого доступа к сервисам.
     
-    Автоматически обнаруживает все сервисы при инициализации.
+    Использует ленивую инициализацию - сервисы загружаются только при первом обращении.
     Предоставляет унифицированный интерфейс для SSE streaming.
     """
     
     _instance: Optional['SSEServiceRegistry'] = None
-    _initialized: bool = False
+    _services_loaded: bool = False
     
     def __new__(cls):
         if cls._instance is None:
@@ -31,13 +31,21 @@ class SSEServiceRegistry:
         return cls._instance
     
     def __init__(self):
-        # Инициализируем только один раз
-        if not SSEServiceRegistry._initialized:
+        # Инициализируем базовые атрибуты, но не загружаем сервисы
+        if not hasattr(self, 'services'):
             self.services: Dict[str, BaseService] = {}
             self.formatter = SSEEventFormatter()
+            logger.info("SSEServiceRegistry created (services not loaded yet)")
+    
+    def _ensure_services_loaded(self):
+        """
+        Ленивая загрузка сервисов - вызывается при первом обращении.
+        Это предотвращает загрузку сервисов при старте FastAPI приложения.
+        """
+        if not SSEServiceRegistry._services_loaded:
+            logger.info("Loading services for SSEServiceRegistry (lazy initialization)...")
             self._discover_services()
-            SSEServiceRegistry._initialized = True
-            logger.info("SSEServiceRegistry initialized")
+            SSEServiceRegistry._services_loaded = True
     
     def _discover_services(self):
         """Обнаруживает и регистрирует все доступные сервисы."""
@@ -61,6 +69,7 @@ class SSEServiceRegistry:
         :param service_name: Имя сервиса (например "ml", "test")
         :return: Экземпляр сервиса или None
         """
+        self._ensure_services_loaded()
         return self.services.get(service_name)
     
     def list_services(self) -> list[str]:
@@ -69,6 +78,7 @@ class SSEServiceRegistry:
         
         :return: Список имён сервисов
         """
+        self._ensure_services_loaded()
         return list(self.services.keys())
     
     async def execute_service_stream(

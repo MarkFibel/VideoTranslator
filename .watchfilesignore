@@ -1,0 +1,11 @@
+# Игнорировать изменения в этих директориях/файлах при auto-reload
+var/
+*.log
+*.pyc
+__pycache__/
+.pytest_cache/
+.git/
+*.db
+*.sqlite
+*.sqlite3
+.venv
