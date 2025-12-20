@@ -188,7 +188,7 @@ class MLService(BaseService):
         self._start_tracking()
 
         try:
-            path = data["path"]
+            path = data['data']["path"]
             filename = os.path.basename(path)
             name = os.path.splitext(filename)[0]
             dir_path = os.path.join(self.temp_dir, name)
@@ -278,7 +278,9 @@ class MLService(BaseService):
         # === ЭТАП 7: processing_frames (С ПОДЭТАПАМИ) ===
         self.next_stage(total_substeps=len(images))
 
-        ocr_results = self.ocr.batch(images).result
+        ocr_raw = self.ocr.batch(images).result
+        ocr_results = self.ocr.ocr_to_dict(ocr_raw)
+        ocr_results
         translated = service_utils.translate_ocr_results(
             self.translator, ocr_results
         ).result

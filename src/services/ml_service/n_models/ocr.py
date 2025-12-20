@@ -34,6 +34,24 @@ class OCR:
         except Exception as e:
             return Response(False, e, None)
     
+    @staticmethod
+    def ocr_to_dict(results):
+        data = []
+        for result in tqdm(results, desc="Processing OCR results"):
+            for page in result.pages:
+                page_data = []
+                for block in page.blocks:
+                    for line in block.lines:
+                        text = ' '.join(word.value for word in line.words)
+                        (x_min, y_min), (x_max, y_max) = line.geometry
+                        page_data.append({
+                            "text": text,
+                            "bbox": [x_min, y_min, x_max, y_max]
+                        })
+                data.append(page_data)
+        return data
+
+    
     def save_results_to_json(self, results, output_path):
         """Сохраняет результаты OCR в JSON с прогресс-баром по страницам."""
         try:
