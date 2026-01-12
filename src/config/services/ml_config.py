@@ -11,10 +11,10 @@ class Settings(BaseSettings):
 
     # ===== ML Service Settings =====
     # URL для синхронного вызова ML сервиса
-    remote_url: Optional[str] = None
+    REMOTE_URL: str = ''
     
     # URL для SSE (streaming) вызова ML сервиса
-    sse_remote_url: Optional[str] = None
+    SSE_REMOTE_URL: str = ''
 
     # Таймауты
     sse_timeout: int = 300  # seconds - таймаут для SSE соединения

@@ -60,8 +60,8 @@ class MLService(BaseService):
         """Инициализация ML-сервиса."""
         super().__init__(settings)
         
-        self.remote_url = settings.remote_url
-        self.sse_remote_url = settings.sse_remote_url
+        self.remote_url = settings.REMOTE_URL
+        self.sse_remote_url = settings.SSE_REMOTE_URL
         self.sse_timeout = settings.sse_timeout
         self.synchronous_timeout = settings.synchronous_timeout
         self.connect_timeout = settings.connect_timeout
