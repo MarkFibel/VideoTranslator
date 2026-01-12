@@ -239,7 +239,7 @@ class MLService(BaseService):
                 )
                 return
             
-            download_url = upload_result.get("presigned_url")
+            download_url = upload_result.get("download_url")
             logger.info(f"File uploaded to S3: {download_url}")
             
             # Удаляем локальный файл после успешной загрузки
