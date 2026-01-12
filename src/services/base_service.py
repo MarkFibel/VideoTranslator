@@ -5,13 +5,15 @@ import os
 import time
 from typing import AsyncIterator, Optional
 from datetime import datetime, timezone
+from pydantic_settings import BaseSettings
 from src.utils.string_utils import to_snake_case
 from src.services.service_stages import ServiceStageDefinition
 
 class BaseService:
     """Базовый класс для всех сервисов."""
     
-    def __init__(self):
+    def __init__(self, settings = BaseSettings()):
+        self.__settings = settings
         self._start_time: Optional[float] = None
         self._stage_definition: Optional[ServiceStageDefinition] = None
         self._current_stage_id: Optional[str] = None
@@ -127,6 +129,10 @@ settings = Settings()
         """Метод, который должен быть реализован в каждом сервисе."""
         raise NotImplementedError("Метод execute должен быть реализован в подклассе.")
     
+    def get_settings(self) -> dict:
+        """Возвращает настройки сервиса в виде словаря."""
+        return self.__settings()
+
     async def execute_stream(self, data: dict) -> AsyncIterator[dict]:
         """
         Новый асинхронный метод для streaming обработки.
