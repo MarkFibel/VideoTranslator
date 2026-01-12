@@ -7,17 +7,64 @@
 import logging
 import os
 import tempfile
-from fastapi import APIRouter, File, UploadFile, Form, Request
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, File, UploadFile, Form, Request, HTTPException, Query
+from fastapi.responses import StreamingResponse, JSONResponse
 from typing import Optional
 
 from src.utils.sse_service_registry import sse_registry
 from src.utils.sse_formatter import SSEEventFormatter
 from src.utils.sse_utils import get_sse_headers
+from src.services.ya_s3_service.ya_s3_service import YaS3Service
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/s3", tags=["s3"])
+
+# Создаем экземпляр сервиса для генерации presigned URL
+_s3_service = YaS3Service()
+
+
+@router.get("/presigned-url")
+async def get_presigned_url(
+    object_key: str = Query(..., description="Ключ объекта в S3"),
+    expiration_hours: Optional[int] = Query(None, description="Время жизни URL в часах")
+) -> JSONResponse:
+    """
+    Генерирует presigned URL для скачивания файла из S3.
+    
+    Presigned URL позволяет скачивать приватные файлы без авторизации
+    в течение указанного времени.
+    
+    :param object_key: Ключ объекта в S3 (путь к файлу в бакете)
+    :param expiration_hours: Время жизни URL в часах (по умолчанию из настроек YA_S3_SIGNED_URL_EXPIRATION_HOURS)
+    :return: JSON с presigned URL
+    """
+    logger.info(f"Generating presigned URL for: {object_key}")
+    
+    try:
+        presigned_url = await _s3_service.generate_presigned_url(
+            object_key=object_key,
+            expiration_hours=expiration_hours
+        )
+        
+        from src.config.services.ya_s3_config import settings
+        expires_in = expiration_hours or settings.YA_S3_SIGNED_URL_EXPIRATION_HOURS
+        
+        return JSONResponse({
+            "object_key": object_key,
+            "download_url": presigned_url,
+            "expires_in_hours": expires_in
+        })
+        
+    except Exception as e:
+        logger.error(f"Failed to generate presigned URL for {object_key}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "code": "PRESIGNED_URL_GENERATION_FAILED",
+                "message": f"Не удалось сгенерировать URL для скачивания: {str(e)}"
+            }
+        )
 
 
 @router.post("/stream")
@@ -84,7 +131,8 @@ async def s3_operation_stream(
                 temp_dir = "var/temp"
                 os.makedirs(temp_dir, exist_ok=True)
                 
-                temp_file_path = os.path.join(temp_dir, file.filename)
+                filename = file.filename or "uploaded_file"
+                temp_file_path = os.path.join(temp_dir, filename)
                 with open(temp_file_path, "wb") as f:
                     content = await file.read()
                     f.write(content)
