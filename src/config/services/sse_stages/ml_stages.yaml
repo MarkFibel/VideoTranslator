@@ -1,0 +1,19 @@
+# Конфигурация этапов для MLService
+# Файл: src/config/services/sse_stages/ml.yaml
+
+stages:
+  - id: uploading_to_s3
+    progress: 0
+    description: "Загрузка файла в облачное хранилище"
+    
+  - id: ml_processing
+    progress: 25
+    description: "Обработка видео ML сервисом"
+    
+  - id: downloading_result
+    progress: 90
+    description: "Скачивание результата"
+    
+  - id: complete
+    progress: 100
+    description: "Обработка завершена"
