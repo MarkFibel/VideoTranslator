@@ -6,11 +6,11 @@
 {# Permissions Policy для Yandex SmartCaptcha #}
 <meta http-equiv="Permissions-Policy" content="accelerometer=*, gyroscope=*, magnetometer=*">
 
-<link rel="icon" type="image/x-icon" href="/static/favicon.ico">
-<link href="/static/css/translator.css" rel="stylesheet">
+<link rel="icon" type="image/x-icon" href="{{ url_for('static', path='favicon.ico') }}">
+<link href="{{ url_for('static', path='css/translator.css') }}" rel="stylesheet">
 
 <!-- Подключаем Stimulus -->
-<script src="/static/js/stimulus.umd.js"></script>
+<script src="{{ url_for('static', path='js/stimulus.umd.js') }}"></script>
 
 <!-- Инициализация Stimulus и регистрация контроллеров -->
 <script type="module">
@@ -33,7 +33,7 @@
 
     for (const file of controllerFiles) {
         try {
-            const module = await import(`/static/js/controllers/${file}?${cacheVersion}`);
+            const module = await import(`{{ url_for('static', path='js/controllers/') }}${file}?${cacheVersion}`);
             // Имя контроллера берется из имени файла (buttonController.js -> button)
             const identifier = file.replace('Controller.js', '').replace(/_/g, '-');
             console.log(`Registering controller: ${identifier} from ${file}`);
