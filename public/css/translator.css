@@ -577,6 +577,34 @@ body {
     color: #00aa00;
 }
 
+/* Примерное время обработки */
+.estimated-time {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    background: rgba(0, 40, 0, 0.4);
+    border: 1px solid #00aa00;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    color: #00ff00;
+}
+
+.estimated-time-icon {
+    font-size: 1.1rem;
+}
+
+.estimated-time-label {
+    color: #00aa00;
+}
+
+.estimated-time-value {
+    color: #00ff00;
+    font-weight: bold;
+    text-shadow: 0 0 5px #00ff00;
+}
+
 .file-remove-btn {
     width: 32px;
     height: 32px;

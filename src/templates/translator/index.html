@@ -26,11 +26,14 @@
         'captchaController.js'
     ];
 
+    // Cache-busting версия (изменить при обновлении контроллеров)
+    const cacheVersion = 'v2';
+
     console.log('Loading controllers:', controllerFiles);
 
     for (const file of controllerFiles) {
         try {
-            const module = await import(`{{ url_for('static', path='js/controllers/') }}${file}`);
+            const module = await import(`{{ url_for('static', path='js/controllers/') }}${file}?${cacheVersion}`);
             // Имя контроллера берется из имени файла (buttonController.js -> button)
             const identifier = file.replace('Controller.js', '').replace(/_/g, '-');
             console.log(`Registering controller: ${identifier} from ${file}`);
@@ -83,7 +86,8 @@
 
                     <!-- Зона загрузки файла -->
                     <div class="upload-zone" data-controller="file" data-file-target="container"
-                        data-file-max-size-value="104857600"
+                        data-file-max-size-value="52428800"
+                        data-file-max-duration-value="20"
                         data-file-accepted-types-value='["video/mp4", "video/mpeg", "video/quicktime", "video/x-msvideo"]'>
 
                         <!-- Основная зона для загрузки (показывается до выбора файла) -->
@@ -118,6 +122,8 @@
                                 <div class="file-details-container">
                                     <div class="file-name" data-file-target="fileName"></div>
                                     <div class="file-details" data-file-target="fileDetails"></div>
+                                    <!-- Примерное время обработки видео -->
+                                    <div class="estimated-time d-none" data-file-target="estimatedTime" data-i18n-attr="title:estimated-time-tooltip"></div>
                                 </div>
                             </div>
 
@@ -178,7 +184,7 @@
                     </div>
                     <h4 class="step-number" data-i18n="step1-number">1. Загрузите видео</h4>
                     <p class="step-description" data-i18n="step1-desc">Выберите и загрузите видеофайл на наш защищённый
-                        сервер</p>
+                        сервер (Разрешенный объем 50 МБ, длительность <20 секунд)</p>
                 </div>
                 <div class="step-item">
                     <div class="step-icon">
@@ -213,7 +219,7 @@
 
         <!-- Версия системы -->
         <div class="version-info">
-            <p data-i18n="version">Продвинутая система обработки видео версия 1.0.0</p>
+            <p data-i18n="version">VideoTranslator 1.0.0</p>
         </div>
     </div>
 </body>

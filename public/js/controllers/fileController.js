@@ -19,6 +19,7 @@ export default class extends Controller {
         "fileName",
         "fileDetails",
         "fileIcon",
+        "estimatedTime",    // Target для отображения времени ожидания
         "error",
         "progress",
         "progressBar",
@@ -186,6 +187,10 @@ export default class extends Controller {
                 video.onloadedmetadata = () => {
                     URL.revokeObjectURL(url);
 
+                    // Сохраняем длительность видео для расчёта времени ожидания
+                    this.videoDuration = video.duration;
+                    console.log('[FileController] Video duration:', this.videoDuration, 'seconds');
+
                     // Проверка длительности
                     if (this.hasMaxDurationValue && video.duration > this.maxDurationValue) {
                         reject(new Error(`Длительность видео превышает ${this.maxDurationValue} секунд`));
@@ -269,6 +274,9 @@ export default class extends Controller {
             // Триггерим reflow для корректной анимации
             this.fileInfoTarget.offsetHeight;
             this.fileInfoTarget.classList.add('visible');
+            
+            // Показываем примерное время обработки для видео
+            this.showEstimatedTime();
         }, 200);
     }
 
@@ -637,6 +645,83 @@ export default class extends Controller {
         const i = Math.floor(Math.log(bytes) / Math.log(k));
 
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    /**
+     * Форматирование времени ожидания
+     * @param {number} seconds - Время в секундах
+     * @returns {string} - Форматированное время (например: "2 мин 30 сек" или "1 ч 15 мин")
+     */
+    formatEstimatedTime(seconds) {
+        if (!seconds || seconds <= 0) return '';
+
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const secs = Math.floor(seconds % 60);
+
+        const parts = [];
+
+        if (hours > 0) {
+            parts.push(`${hours} ч`);
+        }
+        if (minutes > 0) {
+            parts.push(`${minutes} мин`);
+        }
+        if (secs > 0 && hours === 0) {
+            // Показываем секунды только если нет часов
+            parts.push(`${secs} сек`);
+        }
+
+        return parts.join(' ') || '< 1 сек';
+    }
+
+    /**
+     * Вычисление и отображение примерного времени ожидания
+     * Формула: длительность видео × 3.5 = время ожидания
+     */
+    showEstimatedTime() {
+        console.log('[FileController] showEstimatedTime called:', {
+            hasEstimatedTimeTarget: this.hasEstimatedTimeTarget,
+            videoDuration: this.videoDuration
+        });
+
+        // Получаем элемент через target или querySelector как fallback
+        let estimatedTimeElement = this.hasEstimatedTimeTarget 
+            ? this.estimatedTimeTarget 
+            : this.element.querySelector('[data-file-target="estimatedTime"]');
+
+        if (!estimatedTimeElement) {
+            console.warn('[FileController] estimatedTimeTarget not found via target or querySelector');
+            return;
+        }
+
+        if (!this.videoDuration) {
+            console.warn('[FileController] videoDuration not set');
+            // Скрываем элемент если нет длительности
+            estimatedTimeElement.classList.add('d-none');
+            return;
+        }
+
+        // Коэффициент для расчёта времени ожидания
+        const PROCESSING_MULTIPLIER = 3.5;
+        
+        // Вычисляем время ожидания в секундах
+        const estimatedSeconds = this.videoDuration * PROCESSING_MULTIPLIER;
+        const formattedTime = this.formatEstimatedTime(estimatedSeconds);
+
+        console.log('[FileController] Estimated processing time:', {
+            videoDuration: this.videoDuration,
+            estimatedSeconds,
+            formattedTime
+        });
+
+        // Отображаем время ожидания
+        estimatedTimeElement.innerHTML = `
+            <span class="estimated-time-icon">⏱️</span>
+            <span class="estimated-time-label">Примерное время обработки:</span>
+            <span class="estimated-time-value">~${formattedTime}</span>
+        `;
+        estimatedTimeElement.classList.remove('d-none');
     }
 
     /**
