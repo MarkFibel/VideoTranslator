@@ -1,60 +1,19 @@
-# Этапы обработки для ML сервиса (машинное обучение / обработка видео)
-
-service_name: "ml"
-description: "ML service stages for video processing and translation"
+# Конфигурация этапов для MLService
+# Файл: src/config/services/sse_stages/ml.yaml
 
 stages:
-  - id: "copying_file"
-    progress: 5
-    supports_substeps: false
-    timeout_seconds: 60
-    description: "Copy uploaded file to temporary directory"
-
-  - id: "splitting_frames"
-    progress: 10
-    supports_substeps: true
-    timeout_seconds: 120
-    description: "Split video into individual frames"
-
-  - id: "extracting_audio"
+  - id: uploading_to_s3
+    progress: 0
+    description: "Загрузка файла в облачное хранилище"
+    
+  - id: ml_processing
     progress: 25
-    supports_substeps: false
-    timeout_seconds: 180
-    description: "Extract audio track from video"
-
-  - id: "recognizing_speech"
-    progress: 40
-    supports_substeps: true
-    timeout_seconds: 300
-    description: "Automatic speech recognition (ASR)"
-
-  - id: "translating_text"
-    progress: 55
-    supports_substeps: false
-    timeout_seconds: 120
-    description: "Machine translation of recognized text"
-
-  - id: "generating_tts"
-    progress: 70
-    supports_substeps: true
-    timeout_seconds: 240
-    description: "Text-to-speech synthesis for translated text"
-
-  - id: "processing_frames"
-    progress: 85
-    supports_substeps: true
-    timeout_seconds: 600
-    description: "OCR and text translation on video frames"
-
-  - id: "assembling_video"
-    progress: 95
-    supports_substeps: false
-    timeout_seconds: 180
-    description: "Assemble final translated video"
-
-# Настройки для ML сервиса
-settings:
-  auto_initialize: true
-  auto_complete: true
-  validate_sequence: true
-  allow_custom_stages: false  # Строгая последовательность для ML pipeline
+    description: "Обработка видео ML сервисом"
+    
+  - id: downloading_result
+    progress: 90
+    description: "Скачивание результата"
+    
+  - id: complete
+    progress: 100
+    description: "Обработка завершена"

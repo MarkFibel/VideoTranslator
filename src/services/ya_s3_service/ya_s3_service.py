@@ -263,14 +263,18 @@ class YaS3Service(BaseService):
                 async for message in self._upload_file_simple(file_path, object_key, file_size):
                     yield message
             
-            # Завершаем успешно
+            # Завершаем успешно - генерируем presigned URL для скачивания
+            presigned_url = await self.generate_presigned_url(object_key)
             public_url = settings.get_public_url(object_key)
+            
             result = {
                 "object_key": object_key,
                 "bucket": settings.YA_S3_BUCKET_NAME,
                 "size": file_size,
                 "md5": md5_hash,
-                "public_url": public_url,
+                "public_url": public_url,  # Публичный URL (работает только для публичных бакетов)
+                "download_url": presigned_url,  # Presigned URL для скачивания (работает всегда)
+                "url_expires_in_hours": settings.YA_S3_SIGNED_URL_EXPIRATION_HOURS,
                 "uploaded_at": datetime.now(timezone.utc).isoformat()
             }
             
@@ -509,6 +513,30 @@ class YaS3Service(BaseService):
                 error_details=str(e)
             )
     
+    async def generate_presigned_url(self, object_key: str, expiration_hours: Optional[int] = None) -> str:
+        """
+        Генерирует presigned URL для скачивания объекта.
+        
+        :param object_key: Ключ объекта в S3
+        :param expiration_hours: Время жизни URL в часах (по умолчанию из настроек)
+        :return: Подписанный URL
+        """
+        if expiration_hours is None:
+            expiration_hours = settings.YA_S3_SIGNED_URL_EXPIRATION_HOURS
+        
+        expiration_seconds = expiration_hours * 3600
+        
+        async with self._get_s3_client() as s3_client:
+            presigned_url = await s3_client.generate_presigned_url(
+                'get_object',
+                Params={
+                    'Bucket': settings.YA_S3_BUCKET_NAME,
+                    'Key': object_key
+                },
+                ExpiresIn=expiration_seconds
+            )
+            return presigned_url
+    
     async def _execute_list_stream(self, data: dict) -> AsyncIterator[dict]:
         """
         Получает список файлов из S3.
@@ -590,4 +618,3 @@ class YaS3Service(BaseService):
             
         finally:
             loop.close()
-

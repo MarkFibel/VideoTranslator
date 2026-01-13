@@ -353,10 +353,8 @@ async def upload_file_stream(
             async for sse_event in sse_registry.execute_service_stream(
                 service_name="ml",
                 params={
-                    "data": {
-                        "name": file_name_without_ext,
-                        "path": temp_file_path
-                    }
+                    "name": file_name_without_ext,
+                    "path": temp_file_path 
                 }
             ):
                 # Проверяем успешное завершение
