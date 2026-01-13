@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastsession import FastSessionMiddleware
 from fastapi.templating import Jinja2Templates
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from src.config.app_config import settings
 from src.config.logging_config import setup_logging
@@ -44,6 +45,10 @@ def get_application() -> FastAPI:
         session_cookie="sid",  # Name of the session cookie
         session_object="session"  # Attribute name of the Session manager under request.state
     )
+    
+    # Middleware для корректной обработки X-Forwarded-Proto от reverse proxy (Nginx)
+    # Это исправляет проблему mixed-content при генерации URL через url_for()
+    application.add_middleware(ProxyHeadersMiddleware, trusted_hosts=["*"])
     
     # Фоновая задача для периодической очистки сессий
     async def periodic_session_cleanup():
