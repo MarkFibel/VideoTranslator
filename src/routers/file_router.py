@@ -197,8 +197,15 @@ async def download_file(request: Request) -> FileResponse:
     logger.info(f"File download requested.")
     
     try:
+        # ДИАГНОСТИКА: логируем session_id и содержимое
+        session_manager = request.state.session
+        session_id = session_manager.session_id if hasattr(session_manager, 'session_id') else 'UNKNOWN'
+        logger.info(f"[DIAG] Download - session_id: {session_id}")
+        
         # Получаем метаданные файла из сессии
-        session = request.state.session.get_session()
+        session = session_manager.get_session()
+        logger.info(f"[DIAG] Download - session contents: {session}")
+        
         file_metadata = session.get('last_uploaded_file', {})
         
         file_path = file_metadata.get("file_path", "")
@@ -326,7 +333,11 @@ async def upload_file_stream(
         
         try:
             # Получаем сессию
-            session = request.state.session.get_session()
+            session_manager = request.state.session
+            session_id = session_manager.session_id if hasattr(session_manager, 'session_id') else 'UNKNOWN'
+            logger.info(f"[DIAG] Upload stream - session_id: {session_id}")
+            
+            session = session_manager.get_session()
             
             # 1. Валидация состояния сессии
             validation_error = file_service.validate_session_state(session)
