@@ -7,7 +7,7 @@
     <title>{% block title %}FastAPI + Stimulus{% endblock %}</title>
 
     <!-- Подключаем Bootstrap CSS -->
-    <link href="{{ url_for('static', path='css/bootstrap.min.css') }}" rel="stylesheet">
+    <link href="/static/css/bootstrap.min.css" rel="stylesheet">
 
     {% block head %}{% endblock %}
 </head>
@@ -19,7 +19,7 @@
     </div>
 
     <!-- Подключаем Bootstrap JS (bundle) -->
-    <script src="{{ url_for('static', path='js/bootstrap.bundle.min.js') }}"></script>
+    <script src="/static/js/bootstrap.bundle.min.js"></script>
 
 </body>
 
