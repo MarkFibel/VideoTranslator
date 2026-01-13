@@ -1,6 +1,7 @@
 import os
 import uuid
 import asyncio
+import json
 from datetime import datetime, timezone
 import logging
 from starlette.status   import HTTP_500_INTERNAL_SERVER_ERROR
@@ -317,6 +318,7 @@ async def upload_file_stream(
         session = None
         completed_successfully = False
         temp_file_path = None
+        result_file_path = None  # Путь к результату после ML обработки
         file_id = None
         
         file_service = FileUploadService()
@@ -369,20 +371,39 @@ async def upload_file_stream(
                     "path": temp_file_path 
                 }
             ):
-                # Проверяем успешное завершение
+                # Проверяем успешное завершение и извлекаем путь к результату
                 if 'event: complete' in sse_event:
                     completed_successfully = True
+                    # Парсим SSE событие для извлечения пути к результату
+                    try:
+                        # SSE формат: "event: complete\ndata: {...}\n\n"
+                        for line in sse_event.split('\n'):
+                            if line.startswith('data:'):
+                                data_json = line[5:].strip()  # Убираем "data:" и пробелы
+                                event_data = json.loads(data_json)
+                                # Извлекаем путь к результату из result.path
+                                result = event_data.get('result', {})
+                                if result and result.get('path'):
+                                    result_file_path = result['path']
+                                    logger.info(f"Result file path extracted: {result_file_path}")
+                                break
+                    except (json.JSONDecodeError, KeyError) as e:
+                        logger.warning(f"Failed to parse complete event: {e}")
                 
                 yield sse_event
                 await asyncio.sleep(0)
             
-            # 5. Сохранение метаданных (используем file_metadata из замыкания)
+            # 5. Сохранение метаданных (используем путь к результату!)
             if completed_successfully:
+                # Используем result_file_path если он был извлечен, иначе fallback на temp_file_path
+                final_file_path = result_file_path or temp_file_path
+                logger.info(f"Saving file metadata with path: {final_file_path}")
+                
                 file_service.save_file_metadata(
                     session=session,
                     file_id=file_id,
                     filename=file_metadata.get("filename") or "unknown",
-                    file_path=temp_file_path,
+                    file_path=final_file_path,
                     content_type=file_metadata.get("content_type") or "application/octet-stream",
                     size=file_metadata.get("size") or 0
                 )
