@@ -304,6 +304,15 @@ async def upload_file_stream(
             }
         )
     
+    # ВАЖНО: Читаем файл ДО создания генератора, т.к. после возврата StreamingResponse
+    # временный файл UploadFile будет закрыт FastAPI
+    file_content = await file.read()
+    file_metadata = {
+        "filename": file.filename,
+        "content_type": file.content_type,
+        "size": file.size or len(file_content)
+    }
+    
     async def event_generator():
         session = None
         completed_successfully = False
@@ -338,16 +347,19 @@ async def upload_file_stream(
             # Устанавливаем pending только после успешной валидации
             session['pending'] = True
             
-            # 2. Сохранение файла
-            file_id, temp_file_path = await file_service.save_uploaded_file(file, session)
+            # 2. Сохранение файла (используем заранее прочитанные данные)
+            file_id, temp_file_path = await file_service.save_uploaded_file_from_bytes(
+                file_content, file_metadata, session
+            )
             
             # 3. Очистка предыдущих файлов
             await file_service.cleanup_previous_file(session)
             
             # 4. ПРЯМОЙ вызов ML сервиса через SSE registry (БЕЗ RabbitMQ!)
-            file_name_without_ext = os.path.splitext(file.filename)[0] if file.filename else file_id
+            filename = file_metadata.get("filename") or ""
+            file_name_without_ext = os.path.splitext(filename)[0] if filename else file_id
             
-            logger.info(f"Starting ML service stream for: {file.filename}")
+            logger.info(f"Starting ML service stream for: {filename}")
             
             # Проксируем все SSE события от ML сервиса напрямую
             async for sse_event in sse_registry.execute_service_stream(
@@ -364,21 +376,21 @@ async def upload_file_stream(
                 yield sse_event
                 await asyncio.sleep(0)
             
-            # 5. Сохранение метаданных
+            # 5. Сохранение метаданных (используем file_metadata из замыкания)
             if completed_successfully:
                 file_service.save_file_metadata(
                     session=session,
                     file_id=file_id,
-                    filename=file.filename or "unknown",
+                    filename=file_metadata.get("filename") or "unknown",
                     file_path=temp_file_path,
-                    content_type=file.content_type or "application/octet-stream",
-                    size=file.size or 0
+                    content_type=file_metadata.get("content_type") or "application/octet-stream",
+                    size=file_metadata.get("size") or 0
                 )
                 
                 session['pending'] = False
                 session['need_download'] = True
                 
-                logger.info(f"SSE upload completed successfully: {file.filename}")
+                logger.info(f"SSE upload completed successfully: {filename}")
                 
         except Exception as e:
             logger.error(f"Critical error in SSE upload: {e}", exc_info=True)
@@ -407,7 +419,8 @@ async def upload_file_stream(
             # КРИТИЧЕСКИ ВАЖНО: Cleanup при разрыве SSE соединения
             if session and not completed_successfully:
                 if session.get('pending', False):
-                    logger.warning(f"SSE connection interrupted for file {file.filename}")
+                    filename = file_metadata.get("filename") or "unknown"
+                    logger.warning(f"SSE connection interrupted for file {filename}")
                     
                     session['pending'] = False
                     

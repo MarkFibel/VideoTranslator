@@ -45,6 +45,39 @@ class FileUploadService:
         
         return file_id, temp_file_path
     
+    async def save_uploaded_file_from_bytes(
+        self, content: bytes, metadata: Dict[str, Any], session: Dict[str, Any]
+    ) -> tuple[str, str]:
+        """
+        Сохраняет файл из bytes во временную директорию.
+        Используется для StreamingResponse, где файл нужно прочитать заранее.
+        
+        :param content: Содержимое файла в bytes
+        :param metadata: Метаданные файла (content_type, filename, size)
+        :param session: Сессия пользователя
+        :return: (file_id, temp_file_path)
+        """
+        temp_dir = settings.TEMP_DIR
+        
+        if not os.path.exists(temp_dir):
+            os.makedirs(temp_dir)
+        
+        file_id = uuid.uuid4().hex
+        content_type = metadata.get("content_type", "")
+        file_ext = get_file_extension_by_content_type(content_type)
+        
+        file_tmp_name = f"{file_id}.{file_ext}" if file_ext else file_id
+        temp_file_path = os.path.join(temp_dir, file_tmp_name)
+        
+        # Асинхронная запись файла
+        async with aiofiles.open(temp_file_path, "wb") as temp_file:
+            await temp_file.write(content)
+        
+        file_size = metadata.get("size") or len(content)
+        logger.info(f"File saved from bytes: {temp_file_path} (size: {file_size} bytes)")
+        
+        return file_id, temp_file_path
+    
     async def cleanup_previous_file(self, session: Dict[str, Any]) -> None:
         """Удаляет предыдущий файл из сессии."""
         if session.get('last_uploaded_file'):
